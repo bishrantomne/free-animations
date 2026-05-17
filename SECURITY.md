@@ -3,7 +3,7 @@
 ## Reporting a Vulnerability
 
 If you discover a security vulnerability in this project, please **do not** open a public issue.  
-Instead, email **bishrantomne@gmail.com** with the subject line `[SECURITY] free-animations` and include:
+Instead, open a **private security advisory** on this repository (GitHub → Security → Advisories → New draft) and include:
 
 - A description of the vulnerability
 - Steps to reproduce it
