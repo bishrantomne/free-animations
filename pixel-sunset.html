@@ -11,7 +11,7 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
-    min-height: 100vh;
+    height: 100vh;
     background: #0d0d14;
     display: flex;
     align-items: center;
@@ -20,7 +20,8 @@
     font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   }
   .scene-wrap {
-    width: min(1800px, 88vw);
+    /* 480:280 ratio — clamp width so height never exceeds 85vh */
+    width: min(1800px, 88vw, calc(85vh * 1.714));
   }
 </style>
 </head>
