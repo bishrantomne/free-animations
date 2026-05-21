@@ -214,12 +214,20 @@
     const cx = (e.clientX - rect.left) * sx;
     const cy = (e.clientY - rect.top) * sy;
     let found = -1;
+    const jelCycle = W + JM * 2;
     for (let i = 0; i < jellies.length; i++) {
       const j = jellies[i];
+      const depthRaw = Math.sin(t * j.depthRate + j.depthPhase);
+      const depthCycle = Math.max(0, depthRaw);
+      if (1 - Math.pow(depthCycle, 1.6) < 0.1) continue; // too deep to interact
+      const bx = ((t * j.swimSX + j.phaseX) % jelCycle + jelCycle) % jelCycle - JM;
       const yOff = Math.sin(t * 0.014 + j.phase) * 3 * S;
       const xOff = Math.sin(t * 0.011 + j.phase * 1.3) * 2 * S;
-      const dx = cx - (j.baseX + xOff), dy = cy - (j.baseY + yOff);
-      if (dx*dx + dy*dy < (9*S)*(9*S)) { found = i; break; }
+      const depthY = depthCycle * 9 * S;
+      const jx = bx + xOff, jy = j.baseY + yOff + depthY;
+      const hitR = j.size === 'large' ? 10*S : j.size === 'tiny' ? 4*S : 7*S;
+      const dx = cx - jx, dy = cy - jy;
+      if (dx*dx + dy*dy < hitR*hitR) { found = i; break; }
     }
     jellyHoverIdx = found;
   });
@@ -652,12 +660,25 @@
   const dayAllClouds = dayFogClouds.concat(dayClouds);
   const nightAllClouds = nightFogClouds.concat(nightClouds);
 
+  const JM = 20*S; // jelly swim margin (canvas px)
   const jellies = [
-    {baseX: 50*S,  baseY: 78*S, phase: 0,    color: 'cyan'},
-    {baseX: 145*S, baseY: 84*S, phase: 1.7,  color: 'teal'},
-    {baseX: 245*S, baseY: 76*S, phase: 3.4,  color: 'cyan'},
-    {baseX: 340*S, baseY: 82*S, phase: 5.1,  color: 'teal'},
-    {baseX: 420*S, baseY: 79*S, phase: 0.8,  color: 'cyan'}
+    // ── Small (moderate speed & depth cycle) ──
+    {phaseX: 60,  baseY:79*S, phase:0.0, swimSX: 0.09*S, depthRate:0.006, depthPhase:0.0,  color:'cyan',   size:'small'},
+    {phaseX:200,  baseY:82*S, phase:2.1, swimSX: 0.07*S, depthRate:0.008, depthPhase:2.3,  color:'teal',   size:'small'},
+    {phaseX:360,  baseY:78*S, phase:4.2, swimSX:-0.11*S, depthRate:0.007, depthPhase:4.8,  color:'purple', size:'small'},
+    {phaseX:460,  baseY:83*S, phase:1.3, swimSX:-0.08*S, depthRate:0.009, depthPhase:1.5,  color:'pink',   size:'small'},
+    {phaseX:130,  baseY:77*S, phase:5.4, swimSX: 0.07*S, depthRate:0.005, depthPhase:3.6,  color:'teal',   size:'small'},
+    {phaseX:420,  baseY:80*S, phase:3.0, swimSX:-0.12*S, depthRate:0.006, depthPhase:5.5,  color:'cyan',   size:'small'},
+    // ── Large (slow drift, deeper, majestic) ──
+    {phaseX: 80,  baseY:85*S, phase:1.0, swimSX: 0.04*S, depthRate:0.004, depthPhase:0.8,  color:'cyan',   size:'large'},
+    {phaseX:280,  baseY:87*S, phase:3.5, swimSX:-0.035*S,depthRate:0.004, depthPhase:3.2,  color:'purple', size:'large'},
+    {phaseX:480,  baseY:84*S, phase:5.8, swimSX: 0.05*S, depthRate:0.005, depthPhase:6.0,  color:'teal',   size:'large'},
+    // ── Tiny (quick, shallow, frequent depth dives) ──
+    {phaseX: 40,  baseY:75*S, phase:0.5, swimSX: 0.18*S, depthRate:0.012, depthPhase:1.0,  color:'cyan',   size:'tiny'},
+    {phaseX:140,  baseY:73*S, phase:2.4, swimSX:-0.15*S, depthRate:0.014, depthPhase:3.8,  color:'pink',   size:'tiny'},
+    {phaseX:240,  baseY:76*S, phase:4.7, swimSX: 0.20*S, depthRate:0.011, depthPhase:2.5,  color:'teal',   size:'tiny'},
+    {phaseX:360,  baseY:74*S, phase:1.9, swimSX:-0.16*S, depthRate:0.013, depthPhase:5.1,  color:'purple', size:'tiny'},
+    {phaseX:470,  baseY:75*S, phase:3.3, swimSX: 0.22*S, depthRate:0.010, depthPhase:0.3,  color:'cyan',   size:'tiny'},
   ];
   let jellyHoverIdx = -1;
   const miniJellies = [];
@@ -911,43 +932,63 @@
 
   function drawJellies(alpha) {
     if (alpha <= 0.02) return;
+    const cycle = W + JM * 2;
     const baseAlpha = alpha * 0.65;
+
     for (let ji = 0; ji < jellies.length; ji++) {
       const j = jellies[ji];
-      const isHovered = ji === jellyHoverIdx;
+
+      // ── Horizontal drift (wraps around canvas) ──
+      const bx = ((t * j.swimSX + j.phaseX) % cycle + cycle) % cycle - JM;
+
+      // ── Depth cycle: periodically dives deep, fading & sinking ──
+      const depthRaw   = Math.sin(t * j.depthRate + j.depthPhase);
+      const depthCycle = Math.max(0, depthRaw);           // 0=surface, 1=deep
+      const depthAlpha = 1 - Math.pow(depthCycle, 1.6);   // fade as they sink
+      if (depthAlpha < 0.03) continue;
+      const depthY = depthCycle * 9 * S;                  // sink with depth
+
       const yOff = Math.sin(t * 0.014 + j.phase) * 3 * S;
       const xOff = Math.sin(t * 0.011 + j.phase * 1.3) * 2 * S;
+      const isHovered = ji === jellyHoverIdx;
       const pulse = isHovered
         ? 0.85 + 0.15 * Math.sin(t * 0.06 + j.phase)
         : 0.7  + 0.30 * Math.sin(t * 0.04 + j.phase);
-      const x = Math.floor(j.baseX + xOff);
-      const y = Math.floor(j.baseY + yOff);
-      let G, H, Cc, T, Halo;
-      if (j.color === 'cyan') { G = '#60D8C0'; H = '#80F0D8'; Cc = '#A8FFEC'; T = '#60D8C0'; Halo = '#388A78'; }
-      else { G = '#5078B8'; H = '#70A0D0'; Cc = '#A0D8F0'; T = '#5078B8'; Halo = '#28507A'; }
 
-      // ── Inner halo — bigger and brighter on hover ──
-      const haloR = isHovered ? 9 * S : 5 * S;
+      const x = Math.floor(bx + xOff);
+      const y = Math.floor(j.baseY + yOff + depthY);
+      const effAlpha = baseAlpha * depthAlpha;
+
+      // ── Colour palette ──
+      let G, H, Cc, T, Halo;
+      if      (j.color === 'cyan')   { G='#60D8C0'; H='#80F0D8'; Cc='#A8FFEC'; T='#60D8C0'; Halo='#388A78'; }
+      else if (j.color === 'teal')   { G='#5078B8'; H='#70A0D0'; Cc='#A0D8F0'; T='#5078B8'; Halo='#28507A'; }
+      else if (j.color === 'purple') { G='#6858C8'; H='#8878E0'; Cc='#AAAAFF'; T='#6858C8'; Halo='#322870'; }
+      else                           { G='#B05888'; H='#D078A8'; Cc='#F0A0CC'; T='#B05888'; Halo='#601840'; }
+
+      // ── Inner halo (size-scaled, brighter on hover) ──
+      const haloR = isHovered ? 9*S : (j.size === 'large' ? 7*S : j.size === 'tiny' ? 3*S : 5*S);
       const glowPow = isHovered ? 0.72 : 0.55;
-      ctx.globalAlpha = baseAlpha * (isHovered ? 1.1 : 0.85);
+      ctx.globalAlpha = effAlpha * (isHovered ? 1.1 : 0.85);
       setFill(Halo);
       for (let dy = -haloR; dy <= haloR; dy++) {
         for (let dx = -haloR - 1; dx <= haloR + 1; dx++) {
-          const dd = Math.sqrt((dx*dx + dy*dy*1.4)) / haloR;
+          const dd = Math.sqrt(dx*dx + dy*dy*1.4) / haloR;
           if (dd > 1.1) continue;
           const intensity = (1 - dd) * pulse * glowPow;
           const ay = y + dy, ax = x + dx;
-          if (ay < 60*S || ay >= 96*S) continue;
-          if (ax < 0 || ax >= W) continue;
+          if (ay < 60*S || ay >= 96*S || ax < 0 || ax >= W) continue;
           if (intensity > TH(ay, ax) * 1.15) ctx.fillRect(ax, ay, 1, 1);
         }
       }
 
-      // ── Outer aura ring — only on hover ──
+      // ── Outer aura ring (hover only) ──
       if (isHovered) {
-        const auraR = 16 * S;
-        setFill(j.color === 'cyan' ? '#1A5040' : '#102848');
-        ctx.globalAlpha = baseAlpha * 0.50;
+        const auraR = 16*S;
+        const auraCol = j.color==='cyan' ? '#1A5040' : j.color==='teal' ? '#102848'
+                      : j.color==='purple' ? '#1A0840' : '#480C24';
+        setFill(auraCol);
+        ctx.globalAlpha = effAlpha * 0.50;
         for (let dy = -auraR; dy <= auraR; dy++) {
           for (let dx = -auraR - 2; dx <= auraR + 2; dx++) {
             const dd = Math.sqrt(dx*dx + dy*dy*1.4) / auraR;
@@ -960,29 +1001,50 @@
         }
       }
 
-      // ── Bell body ──
-      ctx.globalAlpha = isHovered ? baseAlpha * 1.15 : baseAlpha;
-      const bellMap = ['.GHG.', 'GHCHG', '.HHH.'];
-      for (let py = 0; py < bellMap.length; py++) {
-        for (let px = 0; px < bellMap[py].length; px++) {
-          const ch = bellMap[py][px];
-          let col;
-          if (ch === 'G') col = G;
-          else if (ch === 'H') col = H;
-          else if (ch === 'C') col = Cc;
-          else continue;
-          setFill(col);
-          ctx.fillRect(x + (px-2)*S, y + (py-1)*S, S, S);
-        }
-      }
+      // ── Bell body & tentacles by size ──
+      ctx.globalAlpha = isHovered ? effAlpha * 1.15 : effAlpha;
 
-      setFill(T);
-      const tentacleRows = [[0, 2, 4], [1, 3], [2]];
-      for (let row = 0; row < tentacleRows.length; row++) {
-        const sway = Math.round(Math.sin(t * 0.03 + j.phase + row * 0.6) * 0.7);
-        for (const baseCol of tentacleRows[row]) {
-          const col = baseCol + sway - 2;
-          ctx.fillRect(x + col*S, y + (2 + row)*S, S, S);
+      if (j.size === 'tiny') {
+        // 3-wide dome: [H Cc H] on top, [. G .] below
+        setFill(H);  ctx.fillRect(x - S, y - S, S, S); ctx.fillRect(x + S, y - S, S, S);
+        setFill(Cc); ctx.fillRect(x,     y - S, S, S);
+        setFill(G);  ctx.fillRect(x,     y,     S, S);
+        setFill(T);
+        const sw = Math.round(Math.sin(t * 0.04 + j.phase) * 0.6);
+        ctx.fillRect(x + sw*S, y + S, S, S);
+
+      } else if (j.size === 'small') {
+        // 5-wide dome
+        const bellMap = ['.GHG.', 'GHCHG', '.HHH.'];
+        for (let py = 0; py < bellMap.length; py++) {
+          for (let px = 0; px < bellMap[py].length; px++) {
+            const ch = bellMap[py][px]; if (ch === '.') continue;
+            setFill(ch === 'G' ? G : ch === 'H' ? H : Cc);
+            ctx.fillRect(x + (px-2)*S, y + (py-1)*S, S, S);
+          }
+        }
+        setFill(T);
+        const tentR = [[0,2,4],[1,3],[2]];
+        for (let row = 0; row < tentR.length; row++) {
+          const sway = Math.round(Math.sin(t * 0.03 + j.phase + row * 0.6) * 0.7);
+          for (const bc of tentR[row]) ctx.fillRect(x + (bc + sway - 2)*S, y + (2+row)*S, S, S);
+        }
+
+      } else {
+        // 7-wide dome (large)
+        const bellMap = ['..GHG..', '.GHHHG.', 'GHHCHHG', '.HHHHH.'];
+        for (let py = 0; py < bellMap.length; py++) {
+          for (let px = 0; px < bellMap[py].length; px++) {
+            const ch = bellMap[py][px]; if (ch === '.') continue;
+            setFill(ch === 'G' ? G : ch === 'H' ? H : Cc);
+            ctx.fillRect(x + (px-3)*S, y + (py-1)*S, S, S);
+          }
+        }
+        setFill(T);
+        const tentL = [[1,3,5],[0,2,4,6],[1,3,5],[2,4],[3]];
+        for (let row = 0; row < tentL.length; row++) {
+          const sway = Math.round(Math.sin(t * 0.025 + j.phase + row * 0.5) * 1.0);
+          for (const bc of tentL[row]) ctx.fillRect(x + (bc + sway - 3)*S, y + (3+row)*S, S, S);
         }
       }
     }
