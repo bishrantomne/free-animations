@@ -11,28 +11,25 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
-    height: 100vh;
+    width: 100%; height: 100vh;
     background: #0d0d14;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     overflow: hidden;
     font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   }
   .scene-wrap {
-    /* 480:280 ratio — clamp width so height never exceeds 85vh */
-    width: min(1800px, 88vw, calc(85vh * 1.714));
+    width: 100%; height: 100vh;
+    position: relative;
   }
 </style>
 </head>
 <body>
 <div class="scene-wrap">
-<div style="padding: 1rem 0; position: relative;">
+<div style="position: relative; width: 100%; height: 100vh;">
   <canvas id="beach" width="480" height="280"
-    style="width: 100%; height: auto; image-rendering: pixelated; image-rendering: crisp-edges; display: block; border-radius: 12px; background: #3A4368;">
+    style="width: 100%; height: 100vh; image-rendering: pixelated; image-rendering: crisp-edges; display: block; object-fit: fill;">
   </canvas>
   <button id="dnToggle" aria-label="Toggle day and night" style="
-    position: absolute; top: calc(1rem + 12px); right: 12px;
+    position: absolute; top: 16px; right: 16px;
     width: 44px; height: 44px;
     background: rgba(15, 22, 42, 0.72);
     border: 1.5px solid rgba(255, 250, 220, 0.45);
@@ -62,14 +59,14 @@
     oceanD:'#1A4C7E', oceanM:'#216898', oceanML:'#2A85B5', oceanL:'#3CA5D0',
     foam:'#FFFFFF', foamM:'#EFF7FB', foamS:'#D8EFF8', foamD:'#A8D0E5', foamE:'#82BFD8',
     washW:'#36C0D5', washM:'#66CEE0', washL:'#A0DBE8',
-    wetDeep:'#82533F', wetMid:'#9A6856', wetSand:'#B58270', wetDry:'#C99478',
+    wetDeep:'#8A5F48', wetMid:'#9E6E58', wetSand:'#B58270', wetDry:'#C99478',
     bird:'#3A2F4A'
   };
 
   const NIGHT = {
     foam:'#C0D4E8', foamM:'#A4B8D0', foamS:'#7888A8', foamD:'#4A6080', foamE:'#304664',
-    washW:'#1F3C58', washM:'#2C4870', washL:'#3D5C84',
-    wetDeep:'#1A1F32', wetMid:'#262B45', wetSand:'#323858', wetDry:'#3F4568'
+    washW:'#263858', washM:'#283450', washL:'#2A3048',
+    wetDeep:'#2C2E42', wetMid:'#30323E', wetSand:'#353442', wetDry:'#3A3646'
   };
 
   // --- OPTIMIZED COLOR MIXING ---
@@ -140,6 +137,89 @@
   button.addEventListener('mousedown', () => { button.style.transform = 'scale(0.92)'; });
   button.addEventListener('mouseup', () => { button.style.transform = 'scale(1)'; });
   button.addEventListener('mouseleave', () => { button.style.transform = 'scale(1)'; });
+
+  // ── Tap interactions: crabs dig, ocean spawns shark fin ──
+  canvas.addEventListener('pointerdown', e => {
+    const rect = canvas.getBoundingClientRect();
+    const sx = canvas.width / rect.width, sy = canvas.height / rect.height;
+    const cx = (e.clientX - rect.left) * sx;
+    const cy = (e.clientY - rect.top) * sy;
+
+    // Check crabs first
+    let handled = false;
+    for (const c of crabs) {
+      if (c.digging) continue;
+      if (cx >= c.x - 2*S && cx <= c.x + 7*S && cy >= c.y - 2*S && cy <= c.y + 5*S) {
+        c.digging = true;
+        c.digStart = performance.now();
+        handled = true;
+        break;
+      }
+    }
+
+    // Check birds — tap to speed boost
+    if (!handled) {
+      for (const b of birds) {
+        const bx = ((t * b.speed + b.extraPhase + b.phase) % (W + 40*S)) - 20*S;
+        const hw = b.big ? 3*S : 2*S;
+        if (cx >= bx - hw && cx <= bx + hw && cy >= b.base - 3*S && cy <= b.base + 3*S) {
+          b.boostEnd = performance.now() + 2000;
+          handled = true;
+          break;
+        }
+      }
+    }
+
+    // Tap on ocean water → spawn shark fin
+    if (!handled && cy >= 62 * S && cy <= 95 * S) {
+      sharks.push({
+        x: cx, y: cy,
+        dir: Math.random() > 0.5 ? 1 : -1,
+        start: performance.now(),
+        speed: 0.35 * S
+      });
+    }
+
+    e.preventDefault();
+  });
+
+  canvas.addEventListener('pointermove', e => {
+    const rect = canvas.getBoundingClientRect();
+    const sx = canvas.width / rect.width, sy = canvas.height / rect.height;
+    const cx = (e.clientX - rect.left) * sx;
+    const cy = (e.clientY - rect.top) * sy;
+    let found = -1;
+    for (let i = 0; i < jellies.length; i++) {
+      const j = jellies[i];
+      const yOff = Math.sin(t * 0.014 + j.phase) * 3 * S;
+      const xOff = Math.sin(t * 0.011 + j.phase * 1.3) * 2 * S;
+      const dx = cx - (j.baseX + xOff), dy = cy - (j.baseY + yOff);
+      if (dx*dx + dy*dy < (9*S)*(9*S)) { found = i; break; }
+    }
+    if (found >= 0 && found !== jellyHoverIdx && miniJellies.length < 20) {
+      const j = jellies[found];
+      const yOff = Math.sin(t * 0.014 + j.phase) * 3 * S;
+      const xOff = Math.sin(t * 0.011 + j.phase * 1.3) * 2 * S;
+      const jx = j.baseX + xOff, jy = j.baseY + yOff;
+      for (let k = 0; k < 4; k++) {
+        const angle = (k / 4) * Math.PI * 2 + Math.random() * 1.1;
+        const dist = 8*S + Math.random() * 12*S;
+        miniJellies.push({
+          x: jx + Math.cos(angle) * dist,
+          y: Math.max(63*S, Math.min(92*S, jy + Math.sin(angle) * dist * 0.6)),
+          phase: Math.random() * 6.28,
+          color: Math.random() > 0.5 ? 'cyan' : 'teal',
+          birth: performance.now(),
+          life: 3000 + Math.random() * 2000,
+          vx: Math.cos(angle) * 0.04 * S,
+          vy: Math.sin(angle) * 0.02 * S,
+          tiny: Math.random() > 0.45
+        });
+      }
+    }
+    jellyHoverIdx = found;
+  });
+  canvas.addEventListener('pointerleave', () => { jellyHoverIdx = -1; });
 
   function buildCloud(w, h, palette) {
     const c = document.createElement('canvas');
@@ -499,7 +579,7 @@
   const daySandColors = ['#B58270', '#C99478', '#D8A488', '#E5B5A0', '#F2C8B5'];
   const dayDampColors = [C.wetDeep, C.wetMid, '#A77460'];
   const nightSandColors = ['#3C3848', '#494554', '#575463', '#6A6776', '#7C7888'];
-  const nightDampColors = ['#222230', '#2D2D3C', '#3E3D4C'];
+  const nightDampColors = ['#282C3A', '#303440', '#383C48'];
   const SAND_Y = 115 * S;
   const daySandCanvas = buildSandCanvas(daySandColors, dayDampColors, SAND_Y, H - SAND_Y);
   const nightSandCanvas = buildSandCanvas(nightSandColors, nightDampColors, SAND_Y, H - SAND_Y);
@@ -572,6 +652,8 @@
     {baseX: 340*S, baseY: 82*S, phase: 5.1,  color: 'teal'},
     {baseX: 420*S, baseY: 79*S, phase: 0.8,  color: 'cyan'}
   ];
+  let jellyHoverIdx = -1;
+  const miniJellies = [];
 
   function drawBird(x, y, frame, big) {
     x = Math.floor(x); y = Math.floor(y);
@@ -616,12 +698,13 @@
     }
   }
   const crabs = [
-    {x: 60*S, y: 124*S, dir: 1, frame: 0, moveC: 0, speed: 14, minX: 50*S, maxX: 72*S},
-    {x: 118*S, y: 131*S, dir: -1, frame: 0, moveC: 7, speed: 12, minX: 100*S, maxX: 135*S},
-    {x: 215*S, y: 135*S, dir: 1, frame: 0, moveC: 3, speed: 16, minX: 207*S, maxX: 228*S}
+    {x: 60*S, y: 124*S, dir: 1, frame: 0, moveC: 0, speed: 14, minX: 50*S, maxX: 72*S, digging: false, digStart: 0},
+    {x: 118*S, y: 131*S, dir: -1, frame: 0, moveC: 7, speed: 12, minX: 100*S, maxX: 135*S, digging: false, digStart: 0},
+    {x: 215*S, y: 135*S, dir: 1, frame: 0, moveC: 3, speed: 16, minX: 207*S, maxX: 228*S, digging: false, digStart: 0}
   ];
   function updateCrabs() {
     for (const c of crabs) {
+      if (c.digging) continue; // frozen while underground
       c.moveC++;
       if (c.moveC >= c.speed) {
         c.x += c.dir * S; c.moveC = 0; c.frame = 1 - c.frame;
@@ -630,16 +713,138 @@
     }
   }
   function drawCrabs() {
+    const now = performance.now();
     for (const c of crabs) {
-      const x = c.x, y = c.y;
-      setFill('#8C201A'); ctx.fillRect(x+S, y, S, S); ctx.fillRect(x+3*S, y, S, S);
-      setFill('#C44434'); ctx.fillRect(x+2*S, y, S, S); ctx.fillRect(x, y+S, 5*S, S);
-      setFill('#A02C24'); ctx.fillRect(x, y+S, S, S); ctx.fillRect(x+4*S, y+S, S, S);
-      setFill('#8C201A');
-      if (c.frame === 0) { ctx.fillRect(x, y+2*S, S, S); ctx.fillRect(x+2*S, y+2*S, S, S); ctx.fillRect(x+4*S, y+2*S, S, S); }
-      else { ctx.fillRect(x+S, y+2*S, S, S); ctx.fillRect(x+3*S, y+2*S, S, S); }
+      if (!c.digging) {
+        // Normal draw
+        const x = c.x, y = c.y;
+        setFill('#8C201A'); ctx.fillRect(x+S, y, S, S); ctx.fillRect(x+3*S, y, S, S);
+        setFill('#C44434'); ctx.fillRect(x+2*S, y, S, S); ctx.fillRect(x, y+S, 5*S, S);
+        setFill('#A02C24'); ctx.fillRect(x, y+S, S, S); ctx.fillRect(x+4*S, y+S, S, S);
+        setFill('#8C201A');
+        if (c.frame === 0) { ctx.fillRect(x, y+2*S, S, S); ctx.fillRect(x+2*S, y+2*S, S, S); ctx.fillRect(x+4*S, y+2*S, S, S); }
+        else { ctx.fillRect(x+S, y+2*S, S, S); ctx.fillRect(x+3*S, y+2*S, S, S); }
+        continue;
+      }
+
+      // ── Dig animation ──
+      // 0–380ms  : sink into sand (crab slides down, clip reveals less)
+      // 380–1000ms: fully underground
+      // 1000–1400ms: emerge back up
+      const elapsed = now - c.digStart;
+      let yOff;
+      if (elapsed < 380) {
+        yOff = Math.floor((elapsed / 380) * 3 * S);
+      } else if (elapsed < 1000) {
+        yOff = 3 * S;
+      } else if (elapsed < 1400) {
+        yOff = Math.floor((1 - (elapsed - 1000) / 400) * 3 * S);
+      } else {
+        c.digging = false;
+        yOff = 0;
+      }
+
+      // Sand-puff: scattered pixels at dig site during entry/exit
+      if (yOff > 0) {
+        const peak = Math.min(yOff, 3*S - yOff) / (1.5 * S); // 0→1→0
+        const sandCol = nightLevel > 0.5 ? '#6A6776' : '#C99478';
+        setFill(sandCol);
+        if (peak > 0.15 && TH(c.y - S, c.x + S)   < peak * 0.6) ctx.fillRect(c.x + S,   c.y - S, S, S);
+        if (peak > 0.15 && TH(c.y - S, c.x + 3*S) < peak * 0.5) ctx.fillRect(c.x + 3*S, c.y - S, S, S);
+        if (peak > 0.25 && TH(c.y,    c.x - S)    < peak * 0.4) ctx.fillRect(c.x - S,   c.y,     S, S);
+        if (peak > 0.25 && TH(c.y,    c.x + 5*S)  < peak * 0.4) ctx.fillRect(c.x + 5*S, c.y,     S, S);
+      }
+
+      // Clip draw: shrink visible portion as crab sinks below sand surface
+      const clipH = Math.max(0, 3 * S - yOff);
+      if (clipH > 0) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(c.x - S, c.y, 7 * S, clipH);
+        ctx.clip();
+        const x = c.x, y = c.y + yOff;
+        setFill('#8C201A'); ctx.fillRect(x+S, y, S, S); ctx.fillRect(x+3*S, y, S, S);
+        setFill('#C44434'); ctx.fillRect(x+2*S, y, S, S); ctx.fillRect(x, y+S, 5*S, S);
+        setFill('#A02C24'); ctx.fillRect(x, y+S, S, S); ctx.fillRect(x+4*S, y+S, S, S);
+        setFill('#8C201A');
+        if (c.frame === 0) { ctx.fillRect(x, y+2*S, S, S); ctx.fillRect(x+2*S, y+2*S, S, S); ctx.fillRect(x+4*S, y+2*S, S, S); }
+        else { ctx.fillRect(x+S, y+2*S, S, S); ctx.fillRect(x+3*S, y+2*S, S, S); }
+        ctx.restore();
+        _curFill = null; // resync cache after ctx.restore() reverts fillStyle
+      }
     }
   }
+
+  // ── Birds (persistent for tap interaction) ──
+  const birds = [
+    {speed: 0.13*S, base: 32*S, phase: 0, big: true, flap: 0.10, extraPhase: 0, extraFlap: 0, boostEnd: 0},
+    {speed: 0.10*S, base: 40*S, phase: 90*S, big: true, flap: 0.08, extraPhase: 0, extraFlap: 0, boostEnd: 0},
+    {speed: 0.16*S, base: 26*S, phase: 180*S, big: false, flap: 0.14, extraPhase: 0, extraFlap: 0, boostEnd: 0}
+  ];
+
+  // ── Shark fins (tap-spawned) ──
+  const sharks = [];
+
+  function updateSharks() {
+    const now = performance.now();
+    for (let i = sharks.length - 1; i >= 0; i--) {
+      const s = sharks[i];
+      if (now - s.start > 2000 || s.x < -10 * S || s.x > W + 10 * S) {
+        sharks.splice(i, 1);
+        continue;
+      }
+      s.x += s.dir * s.speed;
+    }
+  }
+
+  function drawSharks() {
+    const now = performance.now();
+    for (const s of sharks) {
+      const elapsed = now - s.start;
+
+      // Fin emerges (0-250ms), cruises, then submerges (1750-2000ms)
+      let fh; // visible fin rows (0..4)
+      if (elapsed < 250) fh = Math.ceil((elapsed / 250) * 4);
+      else if (elapsed > 1750) fh = Math.ceil(((2000 - elapsed) / 250) * 4);
+      else fh = 4;
+      if (fh <= 0) continue;
+
+      const x = Math.floor(s.x);
+      const yWob = Math.floor(Math.sin(elapsed * 0.003) * 0.5 * S);
+      const y = Math.floor(s.y + yWob);
+      const d = s.dir; // +1 right, -1 left
+
+      // Fin palette (adapts to day/night)
+      const dk  = nightLevel > 0.5 ? '#060A18' : '#141418';
+      const mid = nightLevel > 0.5 ? '#101828' : '#222230';
+      const hi  = nightLevel > 0.5 ? '#1C2438' : '#343444';
+
+      // Compact dorsal fin — 4 rows tall, widens toward base, leans in swim dir
+      //  Row 3 (tip):  1 px
+      //  Row 2:        2 px
+      //  Row 1:        3 px
+      //  Row 0 (base): 4 px
+      const px = (ox, oy, c) => { setFill(c); ctx.fillRect(x + ox * S, y - oy * S, S, S); };
+      const od = d > 0 ? 1 : 0;
+
+      if (fh >= 4) px(od, 3, dk);
+      if (fh >= 3) { px(od, 2, dk); px(od + 1, 2, mid); }
+      if (fh >= 2) { px(od - 1, 1, dk); px(od, 1, mid); px(od + 1, 1, hi); }
+      if (fh >= 1) { px(od - 1, 0, dk); px(od, 0, dk); px(od + 1, 0, mid); px(od + 2, 0, hi); }
+
+      // Small wake behind fin
+      if (fh >= 2) {
+        setFill(nightLevel > 0.5 ? '#304664' : '#D8EFF8');
+        const wx = x - d * 3 * S;
+        if (wx >= 0 && wx < W) ctx.fillRect(wx, y, S, S);
+        if (fh >= 3) {
+          const wx2 = x - d * 5 * S;
+          if (wx2 >= 0 && wx2 < W && TH(y, wx2) < 0.35) ctx.fillRect(wx2, y, S, S);
+        }
+      }
+    }
+  }
+
   const particles = [];
   for (let i = 0; i < 12*S; i++) {
     particles.push({ x: Math.random()*W, y: 116*S + Math.random()*22*S, vx: (Math.random()-0.5)*0.15*S, vy: (-0.02+Math.random()*0.04)*S, age: Math.random()*100, maxAge: 80+Math.random()*60, sw: Math.random()*6.28 });
@@ -700,34 +905,56 @@
   function drawJellies(alpha) {
     if (alpha <= 0.02) return;
     const baseAlpha = alpha * 0.65;
-    for (const j of jellies) {
+    for (let ji = 0; ji < jellies.length; ji++) {
+      const j = jellies[ji];
+      const isHovered = ji === jellyHoverIdx;
       const yOff = Math.sin(t * 0.014 + j.phase) * 3 * S;
       const xOff = Math.sin(t * 0.011 + j.phase * 1.3) * 2 * S;
-      const pulse = 0.7 + 0.3 * Math.sin(t * 0.04 + j.phase);
+      const pulse = isHovered
+        ? 0.85 + 0.15 * Math.sin(t * 0.06 + j.phase)
+        : 0.7  + 0.30 * Math.sin(t * 0.04 + j.phase);
       const x = Math.floor(j.baseX + xOff);
       const y = Math.floor(j.baseY + yOff);
       let G, H, Cc, T, Halo;
       if (j.color === 'cyan') { G = '#60D8C0'; H = '#80F0D8'; Cc = '#A8FFEC'; T = '#60D8C0'; Halo = '#388A78'; }
       else { G = '#5078B8'; H = '#70A0D0'; Cc = '#A0D8F0'; T = '#5078B8'; Halo = '#28507A'; }
 
-      ctx.globalAlpha = baseAlpha * 0.85;
-      const haloR = 5 * S;
+      // ── Inner halo — bigger and brighter on hover ──
+      const haloR = isHovered ? 9 * S : 5 * S;
+      const glowPow = isHovered ? 0.72 : 0.55;
+      ctx.globalAlpha = baseAlpha * (isHovered ? 1.1 : 0.85);
       setFill(Halo);
       for (let dy = -haloR; dy <= haloR; dy++) {
         for (let dx = -haloR - 1; dx <= haloR + 1; dx++) {
           const dd = Math.sqrt((dx*dx + dy*dy*1.4)) / haloR;
           if (dd > 1.1) continue;
-          const intensity = (1 - dd) * pulse * 0.55;
+          const intensity = (1 - dd) * pulse * glowPow;
           const ay = y + dy, ax = x + dx;
           if (ay < 60*S || ay >= 96*S) continue;
           if (ax < 0 || ax >= W) continue;
-          if (intensity > TH(ay, ax) * 1.15) {
-            ctx.fillRect(ax, ay, 1, 1);
+          if (intensity > TH(ay, ax) * 1.15) ctx.fillRect(ax, ay, 1, 1);
+        }
+      }
+
+      // ── Outer aura ring — only on hover ──
+      if (isHovered) {
+        const auraR = 16 * S;
+        setFill(j.color === 'cyan' ? '#1A5040' : '#102848');
+        ctx.globalAlpha = baseAlpha * 0.50;
+        for (let dy = -auraR; dy <= auraR; dy++) {
+          for (let dx = -auraR - 2; dx <= auraR + 2; dx++) {
+            const dd = Math.sqrt(dx*dx + dy*dy*1.4) / auraR;
+            if (dd < 0.72 || dd > 1.08) continue;
+            const intensity = (1 - Math.abs(dd - 0.90) / 0.18) * pulse * 0.38;
+            const ay = y + dy, ax = x + dx;
+            if (ay < 60*S || ay >= 96*S || ax < 0 || ax >= W) continue;
+            if (intensity > TH(ay, ax) * 1.2) ctx.fillRect(ax, ay, 1, 1);
           }
         }
       }
 
-      ctx.globalAlpha = baseAlpha;
+      // ── Bell body ──
+      ctx.globalAlpha = isHovered ? baseAlpha * 1.15 : baseAlpha;
       const bellMap = ['.GHG.', 'GHCHG', '.HHH.'];
       for (let py = 0; py < bellMap.length; py++) {
         for (let px = 0; px < bellMap[py].length; px++) {
@@ -749,6 +976,103 @@
         for (const baseCol of tentacleRows[row]) {
           const col = baseCol + sway - 2;
           ctx.fillRect(x + col*S, y + (2 + row)*S, S, S);
+        }
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function updateMiniJellies() {
+    const now = performance.now();
+    for (let i = miniJellies.length - 1; i >= 0; i--) {
+      const m = miniJellies[i];
+      if (now - m.birth >= m.life) { miniJellies.splice(i, 1); continue; }
+      m.x += m.vx;
+      m.y += m.vy;
+      if (m.y < 63*S || m.y > 92*S) m.vy = -m.vy;
+      if (m.x < 2 || m.x > W - 2) m.vx = -m.vx;
+    }
+  }
+
+  function drawMiniJellies(alpha) {
+    if (alpha <= 0.02 || miniJellies.length === 0) return;
+    const now = performance.now();
+    for (const m of miniJellies) {
+      const age = now - m.birth;
+      if (age >= m.life) continue;
+      let fade;
+      if (age < 600) fade = age / 600;
+      else if (age > m.life - 600) fade = (m.life - age) / 600;
+      else fade = 1;
+      if (fade < 0.03) continue;
+
+      const yWob = Math.sin(t * 0.018 + m.phase) * 1.5 * S;
+      const xWob = Math.sin(t * 0.013 + m.phase * 1.4) * 0.8 * S;
+      const x = Math.floor(m.x + xWob);
+      const y = Math.floor(m.y + yWob);
+      if (y < 61*S || y >= 96*S || x < 2 || x >= W - 2) continue;
+
+      let G, H, Cc, T, Halo;
+      if (m.color === 'cyan') { G = '#60D8C0'; H = '#80F0D8'; Cc = '#A8FFEC'; T = '#60D8C0'; Halo = '#388A78'; }
+      else { G = '#5078B8'; H = '#70A0D0'; Cc = '#A0D8F0'; T = '#5078B8'; Halo = '#28507A'; }
+      const pulse = 0.7 + 0.3 * Math.sin(t * 0.05 + m.phase);
+
+      if (m.tiny) {
+        // Tiny jelly: 3-pixel bell
+        const haloR = 3 * S;
+        ctx.globalAlpha = alpha * fade * 0.52;
+        setFill(Halo);
+        for (let dy = -haloR; dy <= haloR; dy++) {
+          for (let dx = -haloR; dx <= haloR; dx++) {
+            const dd = Math.sqrt(dx*dx + dy*dy*1.3) / haloR;
+            if (dd > 1.0) continue;
+            const intensity = (1 - dd) * pulse * 0.42;
+            const ay = y + dy, ax = x + dx;
+            if (ay < 61*S || ay >= 96*S || ax < 0 || ax >= W) continue;
+            if (intensity > TH(ay, ax) * 1.1) ctx.fillRect(ax, ay, 1, 1);
+          }
+        }
+        ctx.globalAlpha = alpha * fade * 0.62;
+        setFill(H); ctx.fillRect(x - S, y, S, S); ctx.fillRect(x + S, y, S, S);
+        setFill(Cc); ctx.fillRect(x, y, S, S);
+        setFill(G); ctx.fillRect(x, y + S, S, S);
+        setFill(T);
+        const sw = Math.round(Math.sin(t * 0.04 + m.phase) * 0.5);
+        ctx.fillRect(x + sw*S, y + 2*S, S, S);
+      } else {
+        // Small jelly: full bell map, same proportions as main
+        const haloR = 4 * S;
+        ctx.globalAlpha = alpha * fade * 0.55;
+        setFill(Halo);
+        for (let dy = -haloR; dy <= haloR; dy++) {
+          for (let dx = -haloR - 1; dx <= haloR + 1; dx++) {
+            const dd = Math.sqrt(dx*dx + dy*dy*1.4) / haloR;
+            if (dd > 1.1) continue;
+            const intensity = (1 - dd) * pulse * 0.46;
+            const ay = y + dy, ax = x + dx;
+            if (ay < 61*S || ay >= 96*S || ax < 0 || ax >= W) continue;
+            if (intensity > TH(ay, ax) * 1.15) ctx.fillRect(ax, ay, 1, 1);
+          }
+        }
+        ctx.globalAlpha = alpha * fade * 0.68;
+        const bellMap = ['.GHG.', 'GHCHG', '.HHH.'];
+        for (let py = 0; py < bellMap.length; py++) {
+          for (let px = 0; px < bellMap[py].length; px++) {
+            const ch = bellMap[py][px];
+            let col;
+            if (ch === 'G') col = G; else if (ch === 'H') col = H;
+            else if (ch === 'C') col = Cc; else continue;
+            setFill(col);
+            ctx.fillRect(x + (px-2)*S, y + (py-1)*S, S, S);
+          }
+        }
+        setFill(T);
+        const tentacleRows = [[0, 2, 4], [1, 3], [2]];
+        for (let row = 0; row < tentacleRows.length; row++) {
+          const sway = Math.round(Math.sin(t * 0.03 + m.phase + row * 0.6) * 0.7);
+          for (const bc of tentacleRows[row]) {
+            ctx.fillRect(x + (bc + sway - 2)*S, y + (2 + row)*S, S, S);
+          }
         }
       }
     }
@@ -821,14 +1145,14 @@
     drawCloudLayer(dayClouds, dayLevel);
     drawCloudLayer(nightClouds, nightLevel);
 
-    const birds = [
-      {speed: 0.13*S, base: 32*S, phase: 0, big: true, flap: 0.10},
-      {speed: 0.10*S, base: 40*S, phase: 90*S, big: true, flap: 0.08},
-      {speed: 0.16*S, base: 26*S, phase: 180*S, big: false, flap: 0.14}
-    ];
+    const birdNow = performance.now();
     for (const b of birds) {
-      const bx = ((t * b.speed + b.phase) % (W + 40*S)) - 20*S;
-      const f = Math.floor((t * b.flap + b.phase * 0.05) % (b.big ? 3 : 2));
+      if (birdNow < b.boostEnd) {
+        b.extraPhase += b.speed * 0.4;
+        b.extraFlap += b.flap * 0.5;
+      }
+      const bx = ((t * b.speed + b.extraPhase + b.phase) % (W + 40*S)) - 20*S;
+      const f = Math.floor((t * b.flap + b.extraFlap + b.phase * 0.05) % (b.big ? 3 : 2));
       drawBird(bx, b.base, f, b.big);
     }
 
@@ -944,6 +1268,8 @@
     updateBio();
     drawBio(nightLevel);
     drawJellies(nightLevel);
+    updateMiniJellies();
+    drawMiniJellies(nightLevel);
 
     const stripes = [
       {y: 68*S, basePeriod: 20*S, dash: 9*S,  scroll: 0.04*S},
@@ -1076,6 +1402,10 @@
         if (botY < 113*S) { const cN = Math.sin(x * 0.115 - t * 0.008 + 2.3) * 0.5; if (cN > 0.32 && TH(botY + 2, x) < 0.10) { setFill(foamCur[0]); ctx.fillRect(x, botY + 2, 1, 1); } }
       }
     }
+
+    // Sharks drawn AFTER all ocean stripes/waves so the fin isn't overwritten
+    updateSharks();
+    drawSharks();
 
     drawDayNightOverlay(daySandCanvas, nightSandCanvas, SAND_Y);
 
