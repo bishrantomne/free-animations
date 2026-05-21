@@ -763,9 +763,9 @@
       const elapsed = now - rock.stateStart;
 
       // ── State transitions ──
-      if      (rock.state === 'crumbling' && elapsed > 500)  { rock.state = 'dust';    rock.stateStart = now; }
-      else if (rock.state === 'dust'      && elapsed > 3000) { rock.state = 'forming'; rock.stateStart = now; }
-      else if (rock.state === 'forming'   && elapsed > 700)  { rock.state = 'solid';   rock.particles = []; }
+      if      (rock.state === 'crumbling' && elapsed > 420)  { rock.state = 'mixing';  rock.stateStart = now; }
+      else if (rock.state === 'mixing'    && elapsed > 2100) { rock.state = 'forming'; rock.stateStart = now; }
+      else if (rock.state === 'forming'   && elapsed > 950)  { rock.state = 'solid';   rock.particles = []; }
 
       if (rock.state === 'solid') {
         // ── Normal draw ──
@@ -779,8 +779,8 @@
         }
 
       } else if (rock.state === 'crumbling') {
-        // ── Particles arc outward then settle on sand ──
-        const p    = Math.min(1, elapsed / 500);
+        // ── Particles arc outward and land on sand ──
+        const p    = Math.min(1, elapsed / 420);
         const ease = p * (2 - p);
         for (const pt of rock.particles) {
           const px = pt.ox + (pt.sx - pt.ox) * ease;
@@ -790,37 +790,52 @@
           ctx.fillRect(Math.floor(px), Math.floor(py), S, S);
         }
 
-      } else if (rock.state === 'dust') {
-        // ── Crumbled particles resting on sand ──
-        ctx.globalAlpha = 0.85;
+      } else if (rock.state === 'mixing') {
+        // ── Particles blend from rock colour → sand colour, then fade to nothing ──
+        // 0–0.55 : colour cross-fades rock → sand
+        // 0.55–1 : alpha fades sand → 0
+        const p       = Math.min(1, elapsed / 2100);
+        const colorT  = Math.min(1, p / 0.55);          // 0=rock col, 1=sand col
+        const fadeAlp = p > 0.55 ? 1 - (p - 0.55) / 0.45 : 1;
+        const baseA   = 0.88 * fadeAlp;
         for (const pt of rock.particles) {
-          setFill(pt.col);
-          ctx.fillRect(Math.floor(pt.sx), Math.floor(pt.sy), S, S);
+          // rock-colour layer
+          if (colorT < 1) {
+            ctx.globalAlpha = baseA * (1 - colorT);
+            setFill(pt.col);
+            ctx.fillRect(Math.floor(pt.sx), Math.floor(pt.sy), S, S);
+          }
+          // sand-colour layer
+          if (colorT > 0) {
+            ctx.globalAlpha = baseA * colorT;
+            setFill('#C2946E');
+            ctx.fillRect(Math.floor(pt.sx), Math.floor(pt.sy), S, S);
+          }
         }
 
       } else if (rock.state === 'forming') {
-        const p = Math.min(1, elapsed / 700);
-        if (p < 0.38) {
-          // Particles sink into sand: fade + slide down
-          const fp = p / 0.38;
-          ctx.globalAlpha = 0.85 * (1 - fp * fp);
-          const sinkY = Math.floor(fp * 2 * S);
-          for (const pt of rock.particles) {
-            setFill(pt.col);
-            ctx.fillRect(Math.floor(pt.sx), Math.floor(pt.sy) + sinkY, S, S);
+        // ── Sand particles rise from scatter positions and coalesce into rock ──
+        // Colour cross-fades sand → rock in the second half of the animation
+        const p    = Math.min(1, elapsed / 950);
+        const ease = p * (2 - p);
+        // small upward arc as grains fly inward
+        const arcY = Math.sin(p * Math.PI * 0.8) * 0.5;
+        const alphaIn = Math.min(1, p * 3.5); // quick fade-in
+        const colorT  = Math.max(0, (p - 0.42) / 0.58); // sand→rock starts at 42%
+        for (const pt of rock.particles) {
+          const px = pt.sx + (pt.ox - pt.sx) * ease;
+          const py = pt.sy + (pt.oy - pt.sy) * ease - arcY * pt.arcH;
+          // sand-colour layer (fades out as rock colour takes over)
+          if (colorT < 1) {
+            ctx.globalAlpha = alphaIn * (1 - colorT);
+            setFill('#C2946E');
+            ctx.fillRect(Math.floor(px), Math.floor(py), S, S);
           }
-        } else {
-          // Rock emerges from sand, rising upward
-          const rp   = (p - 0.38) / 0.62;
-          const ease = rp * (2 - rp);
-          const yOff = Math.floor((1 - ease) * 6 * S);
-          ctx.globalAlpha = ease;
-          for (let py = 0; py < s.length; py++) {
-            for (let px = 0; px < s[py].length; px++) {
-              const ch = s[py][px]; if (ch === '.') continue;
-              setFill(ch === 'L' ? '#857968' : ch === 'M' ? '#5C5042' : '#3A3024');
-              ctx.fillRect(rock.x + px*S, rock.y + py*S + yOff, S, S);
-            }
+          // rock-colour layer (fades in)
+          if (colorT > 0) {
+            ctx.globalAlpha = alphaIn * colorT;
+            setFill(pt.col);
+            ctx.fillRect(Math.floor(px), Math.floor(py), S, S);
           }
         }
       }
