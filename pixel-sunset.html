@@ -763,9 +763,26 @@
       const elapsed = now - rock.stateStart;
 
       // ── State transitions ──
-      if      (rock.state === 'crumbling' && elapsed > 420)  { rock.state = 'mixing';  rock.stateStart = now; }
-      else if (rock.state === 'mixing'    && elapsed > 2100) { rock.state = 'forming'; rock.stateStart = now; }
-      else if (rock.state === 'forming'   && elapsed > 950)  { rock.state = 'solid';   rock.particles = []; }
+      if (rock.state === 'crumbling' && elapsed > 420) {
+        rock.state = 'mixing';
+        rock.stateStart = now;
+
+      } else if (rock.state === 'mixing' && elapsed > 2100) {
+        rock.state = 'forming';
+        rock.stateStart = now;
+        // Assign wide sand-surface source positions so particles visibly travel
+        const spread = rock.type === 'med' ? 28 : rock.type === 'small' ? 20 : 13;
+        const midX   = rock.x + s[0].length * S * 0.5;
+        const baseY  = rock.y + s.length * S;
+        for (const pt of rock.particles) {
+          pt.fx = midX + (Math.random() - 0.5) * spread * S;
+          pt.fy = baseY + Math.random() * S;
+        }
+
+      } else if (rock.state === 'forming' && elapsed > 1050) {
+        rock.state = 'solid';
+        rock.particles = [];
+      }
 
       if (rock.state === 'solid') {
         // ── Normal draw ──
@@ -779,7 +796,7 @@
         }
 
       } else if (rock.state === 'crumbling') {
-        // ── Particles arc outward and land on sand ──
+        // ── Pixels burst outward and arc down to sand ──
         const p    = Math.min(1, elapsed / 420);
         const ease = p * (2 - p);
         for (const pt of rock.particles) {
@@ -791,21 +808,17 @@
         }
 
       } else if (rock.state === 'mixing') {
-        // ── Particles blend from rock colour → sand colour, then fade to nothing ──
-        // 0–0.55 : colour cross-fades rock → sand
-        // 0.55–1 : alpha fades sand → 0
-        const p       = Math.min(1, elapsed / 2100);
-        const colorT  = Math.min(1, p / 0.55);          // 0=rock col, 1=sand col
-        const fadeAlp = p > 0.55 ? 1 - (p - 0.55) / 0.45 : 1;
-        const baseA   = 0.88 * fadeAlp;
+        // ── Rock colour cross-fades to sand, then vanishes ──
+        const p      = Math.min(1, elapsed / 2100);
+        const colorT = Math.min(1, p / 0.55);
+        const fadeA  = p > 0.55 ? 1 - (p - 0.55) / 0.45 : 1;
+        const baseA  = 0.88 * fadeA;
         for (const pt of rock.particles) {
-          // rock-colour layer
           if (colorT < 1) {
             ctx.globalAlpha = baseA * (1 - colorT);
             setFill(pt.col);
             ctx.fillRect(Math.floor(pt.sx), Math.floor(pt.sy), S, S);
           }
-          // sand-colour layer
           if (colorT > 0) {
             ctx.globalAlpha = baseA * colorT;
             setFill('#C2946E');
@@ -814,24 +827,30 @@
         }
 
       } else if (rock.state === 'forming') {
-        // ── Sand particles rise from scatter positions and coalesce into rock ──
-        // Colour cross-fades sand → rock in the second half of the animation
-        const p    = Math.min(1, elapsed / 950);
-        const ease = p * (2 - p);
-        // small upward arc as grains fly inward
-        const arcY = Math.sin(p * Math.PI * 0.8) * 0.5;
-        const alphaIn = Math.min(1, p * 3.5); // quick fade-in
-        const colorT  = Math.max(0, (p - 0.42) / 0.58); // sand→rock starts at 42%
-        for (const pt of rock.particles) {
-          const px = pt.sx + (pt.ox - pt.sx) * ease;
-          const py = pt.sy + (pt.oy - pt.sy) * ease - arcY * pt.arcH;
-          // sand-colour layer (fades out as rock colour takes over)
+        // ── Sand grains appear at surface, fly inward, solidify into rock ──
+        // Phase A (lp 0–0.20): grain appears fully at fx,fy (sand colour, full alpha)
+        // Phase B (lp 0.20–1): grain travels from fx,fy → ox,oy
+        // Phase C (flyP 0.55–1): colour cross-fades sand → rock
+        const p = Math.min(1, elapsed / 1050);
+
+        for (let i = 0; i < rock.particles.length; i++) {
+          const pt      = rock.particles[i];
+          const stagger = (i % 4) * 0.05;                       // 0 … 0.15 stagger
+          const lp      = Math.max(0, (p - stagger) / (1 - stagger));
+          const alphaIn = Math.min(1, lp / 0.20);               // 0→1 during appear phase
+          const flyP    = Math.max(0, (lp - 0.20) / 0.80);      // 0→1 during travel phase
+          const ease    = flyP * (2 - flyP);                     // ease-out travel
+
+          const px = pt.fx + (pt.ox - pt.fx) * ease;
+          const py = pt.fy + (pt.oy - pt.fy) * ease;
+
+          const colorT = Math.max(0, (flyP - 0.55) / 0.45);     // sand→rock in last 45% of travel
+
           if (colorT < 1) {
             ctx.globalAlpha = alphaIn * (1 - colorT);
             setFill('#C2946E');
             ctx.fillRect(Math.floor(px), Math.floor(py), S, S);
           }
-          // rock-colour layer (fades in)
           if (colorT > 0) {
             ctx.globalAlpha = alphaIn * colorT;
             setFill(pt.col);
