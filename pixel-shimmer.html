@@ -69,21 +69,21 @@
 
   /* CONTROL PANEL */
   .panel {
-    width: 340px;
+    width: 220px;
     flex-shrink: 0;
-    padding: 32px 28px;
+    padding: 18px 14px;
     display: flex;
     flex-direction: column;
     justify-content: center;
-    gap: 14px;
+    gap: 8px;
     z-index: 2;
   }
 
   .card {
     width: 100%;
     background: linear-gradient(180deg, var(--card) 0%, var(--card-edge) 100%);
-    border-radius: 26px;
-    padding: 14px;
+    border-radius: 18px;
+    padding: 9px;
     position: relative;
     box-shadow:
       0 1px 0 rgba(255, 255, 255, 0.5) inset,
@@ -103,9 +103,9 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 18px;
-    border-radius: 14px;
-    margin-top: 6px;
+    padding: 8px 11px;
+    border-radius: 9px;
+    margin-top: 4px;
     user-select: none;
     position: relative;
     overflow: hidden;
@@ -148,7 +148,7 @@
     position: relative;
     z-index: 1;
     font-family: 'Inter', sans-serif;
-    font-size: 13px;
+    font-size: 11px;
     letter-spacing: -0.01em;
     /* auto-contrast: white text gets inverted against whatever's behind */
     color: #ffffff;
@@ -158,11 +158,11 @@
   .value {
     font-weight: 500;
     font-variant-numeric: tabular-nums;
-    padding: 4px 10px;
-    margin: -4px -10px;
-    border-radius: 6px;
+    padding: 3px 7px;
+    margin: -3px -7px;
+    border-radius: 4px;
     cursor: text;
-    min-width: 28px;
+    min-width: 20px;
     text-align: right;
     outline: none;
     transition: background 120ms ease;
@@ -196,29 +196,29 @@
 
   /* palette swatches */
   .palette-bar {
-    margin-top: 6px;
-    padding: 14px 18px;
-    border-radius: 14px;
+    margin-top: 4px;
+    padding: 8px 11px;
+    border-radius: 9px;
     background: var(--row);
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 8px;
   }
   .palette-bar-label {
     font-family: 'Inter', sans-serif;
-    font-size: 13px;
+    font-size: 11px;
     color: var(--ink);
     font-weight: 600;
     letter-spacing: -0.01em;
   }
   .swatch-list {
     display: flex;
-    gap: 10px;
+    gap: 6px;
     flex-wrap: wrap;
   }
   .swatch {
-    width: 32px;
-    height: 32px;
+    width: 22px;
+    height: 22px;
     border-radius: 50%;
     border: none;
     cursor: pointer;
@@ -226,7 +226,6 @@
     position: relative;
     background-clip: padding-box;
     box-shadow:
-      0 0 0 2px var(--card),
       0 0 0 2px var(--card),
       0 2px 6px -2px rgba(0,0,0,0.25);
     transition: transform 160ms cubic-bezier(.34,1.6,.64,1), box-shadow 160ms ease;
@@ -238,17 +237,17 @@
     transform: scale(1.08);
     box-shadow:
       0 0 0 2px var(--card),
-      0 0 0 4px var(--ink),
+      0 0 0 3px var(--ink),
       0 4px 10px -2px rgba(0,0,0,0.3);
   }
   .swatch::after {
     content: attr(title);
     position: absolute;
-    bottom: -22px;
+    bottom: -18px;
     left: 50%;
     transform: translateX(-50%);
     font-family: 'Inter', sans-serif;
-    font-size: 10px;
+    font-size: 9px;
     color: var(--ink-soft);
     opacity: 0;
     pointer-events: none;
@@ -260,11 +259,11 @@
   /* shape selector (mirrors palette layout) */
   .shape-list {
     display: flex;
-    gap: 10px;
+    gap: 6px;
   }
   .shape-btn {
-    width: 32px;
-    height: 32px;
+    width: 22px;
+    height: 22px;
     border-radius: 50%;
     border: none;
     cursor: pointer;
@@ -279,25 +278,25 @@
   .shape-btn:hover { transform: scale(1.12); }
   .shape-btn.active {
     transform: scale(1.08);
-    box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--ink);
+    box-shadow: 0 0 0 2px var(--card), 0 0 0 3px var(--ink);
   }
   .shape-preview {
-    width: 14px;
-    height: 14px;
+    width: 10px;
+    height: 10px;
     background: var(--ink);
     display: block;
   }
   .shape-preview.round { border-radius: 50%; }
   .shape-preview.square { border-radius: 2px; }
-  .shape-preview.diamond { transform: rotate(45deg); border-radius: 1px; width: 12px; height: 12px; }
+  .shape-preview.diamond { transform: rotate(45deg); border-radius: 1px; width: 8px; height: 8px; }
   .shape-btn::after {
     content: attr(title);
     position: absolute;
-    bottom: -22px;
+    bottom: -18px;
     left: 50%;
     transform: translateX(-50%);
     font-family: 'Inter', sans-serif;
-    font-size: 10px;
+    font-size: 9px;
     color: var(--ink-soft);
     opacity: 0;
     pointer-events: none;
@@ -308,14 +307,14 @@
 
   /* download button */
   .download-btn {
-    padding: 14px 18px;
-    border-radius: 14px;
+    padding: 9px 12px;
+    border-radius: 9px;
     background: var(--ink);
     color: var(--card);
     border: none;
     cursor: pointer;
     font-family: 'Inter', sans-serif;
-    font-size: 13px;
+    font-size: 11px;
     font-weight: 600;
     letter-spacing: -0.01em;
     display: flex;
