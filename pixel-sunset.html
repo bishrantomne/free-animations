@@ -195,6 +195,23 @@
       }
     }
 
+    // Check rocks — tap to crumble
+    if (!handled) {
+      for (const rock of rocks) {
+        if (rock.state !== 'solid') continue;
+        const s = ROCKS[rock.type];
+        const rw = s[0].length * S, rh = s.length * S;
+        if (cx >= rock.x - S && cx <= rock.x + rw + S &&
+            cy >= rock.y - S && cy <= rock.y + rh + S) {
+          rock.state = 'crumbling';
+          rock.stateStart = performance.now();
+          rock.particles = buildRockParticles(rock.type, rock.x, rock.y);
+          handled = true;
+          break;
+        }
+      }
+    }
+
     // Tap on ocean water → spawn shark fin
     if (!handled && cy >= 62 * S && cy <= 95 * S) {
       sharks.push({
@@ -708,22 +725,106 @@
     }
   }
   const ROCKS = { tiny: ['LMD','.DD'], small: ['.LMD','LMMD','.DDD'], med: ['..LMD.','.LMMMD','LMMMMD','.DDDDD'] };
-  const rockList = [['med', 24*S, 122*S], ['tiny', 32*S, 129*S], ['small', 78*S, 131*S], ['small', 140*S, 127*S], ['tiny', 147*S, 130*S], ['med', 200*S, 124*S]];
+
+  function buildRockParticles(type, rx, ry) {
+    const s = ROCKS[type];
+    const ph = s.length;
+    const spread = type === 'med' ? 11 : type === 'small' ? 8 : 5;
+    const pts = [];
+    for (let py = 0; py < ph; py++) {
+      for (let px = 0; px < s[py].length; px++) {
+        const ch = s[py][px]; if (ch === '.') continue;
+        const col = ch === 'L' ? '#857968' : ch === 'M' ? '#5C5042' : '#3A3024';
+        const ox = rx + px * S, oy = ry + py * S;
+        pts.push({
+          col, ox, oy,
+          sx: ox + (Math.random() - 0.5) * spread * S,
+          sy: ry + ph * S + Math.random() * S,
+          arcH: (0.8 + Math.random() * 1.8) * S,
+        });
+      }
+    }
+    return pts;
+  }
+
+  const rocks = [
+    {type:'med',   x:24*S,  y:122*S, state:'solid', stateStart:0, particles:[]},
+    {type:'tiny',  x:32*S,  y:129*S, state:'solid', stateStart:0, particles:[]},
+    {type:'small', x:78*S,  y:131*S, state:'solid', stateStart:0, particles:[]},
+    {type:'small', x:140*S, y:127*S, state:'solid', stateStart:0, particles:[]},
+    {type:'tiny',  x:147*S, y:130*S, state:'solid', stateStart:0, particles:[]},
+    {type:'med',   x:200*S, y:124*S, state:'solid', stateStart:0, particles:[]},
+  ];
+
   function drawRocks() {
-    for (const [type, x, y] of rockList) {
-      const s = ROCKS[type];
-      for (let py = 0; py < s.length; py++) {
-        for (let px = 0; px < s[py].length; px++) {
-          const ch = s[py][px];
-          let col;
-          if (ch === 'L') col = '#857968';
-          else if (ch === 'M') col = '#5C5042';
-          else if (ch === 'D') col = '#3A3024';
-          else continue;
-          setFill(col);
-          ctx.fillRect(x + px*S, y + py*S, S, S);
+    const now = performance.now();
+    for (const rock of rocks) {
+      const s = ROCKS[rock.type];
+      const elapsed = now - rock.stateStart;
+
+      // ── State transitions ──
+      if      (rock.state === 'crumbling' && elapsed > 500)  { rock.state = 'dust';    rock.stateStart = now; }
+      else if (rock.state === 'dust'      && elapsed > 3000) { rock.state = 'forming'; rock.stateStart = now; }
+      else if (rock.state === 'forming'   && elapsed > 700)  { rock.state = 'solid';   rock.particles = []; }
+
+      if (rock.state === 'solid') {
+        // ── Normal draw ──
+        ctx.globalAlpha = 1;
+        for (let py = 0; py < s.length; py++) {
+          for (let px = 0; px < s[py].length; px++) {
+            const ch = s[py][px]; if (ch === '.') continue;
+            setFill(ch === 'L' ? '#857968' : ch === 'M' ? '#5C5042' : '#3A3024');
+            ctx.fillRect(rock.x + px*S, rock.y + py*S, S, S);
+          }
+        }
+
+      } else if (rock.state === 'crumbling') {
+        // ── Particles arc outward then settle on sand ──
+        const p    = Math.min(1, elapsed / 500);
+        const ease = p * (2 - p);
+        for (const pt of rock.particles) {
+          const px = pt.ox + (pt.sx - pt.ox) * ease;
+          const py = pt.oy + (pt.sy - pt.oy) * ease - Math.sin(p * Math.PI) * pt.arcH;
+          ctx.globalAlpha = 1;
+          setFill(pt.col);
+          ctx.fillRect(Math.floor(px), Math.floor(py), S, S);
+        }
+
+      } else if (rock.state === 'dust') {
+        // ── Crumbled particles resting on sand ──
+        ctx.globalAlpha = 0.85;
+        for (const pt of rock.particles) {
+          setFill(pt.col);
+          ctx.fillRect(Math.floor(pt.sx), Math.floor(pt.sy), S, S);
+        }
+
+      } else if (rock.state === 'forming') {
+        const p = Math.min(1, elapsed / 700);
+        if (p < 0.38) {
+          // Particles sink into sand: fade + slide down
+          const fp = p / 0.38;
+          ctx.globalAlpha = 0.85 * (1 - fp * fp);
+          const sinkY = Math.floor(fp * 2 * S);
+          for (const pt of rock.particles) {
+            setFill(pt.col);
+            ctx.fillRect(Math.floor(pt.sx), Math.floor(pt.sy) + sinkY, S, S);
+          }
+        } else {
+          // Rock emerges from sand, rising upward
+          const rp   = (p - 0.38) / 0.62;
+          const ease = rp * (2 - rp);
+          const yOff = Math.floor((1 - ease) * 6 * S);
+          ctx.globalAlpha = ease;
+          for (let py = 0; py < s.length; py++) {
+            for (let px = 0; px < s[py].length; px++) {
+              const ch = s[py][px]; if (ch === '.') continue;
+              setFill(ch === 'L' ? '#857968' : ch === 'M' ? '#5C5042' : '#3A3024');
+              ctx.fillRect(rock.x + px*S, rock.y + py*S + yOff, S, S);
+            }
+          }
         }
       }
+      ctx.globalAlpha = 1;
     }
   }
   const crabs = [
