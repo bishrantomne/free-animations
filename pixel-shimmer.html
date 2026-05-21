@@ -1,0 +1,1071 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="title" content="Pixel Shimmer">
+<meta name="description" content="Interactive text animation that renders any word as a swarm of colored dots flowing with a wave shimmer effect. Customize dot size, spacing, speed, direction, color palette, and shape in real time. Hover to scatter dots with your cursor. Download the animation as a video.">
+<meta name="category" content="Tools">
+<meta name="tags" content="pixel,text,shimmer,wave,interactive,dots,animation,cursor,typography,color,tool">
+<title>Pixel Shimmer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0c0a09;
+    --bg-warm: #14100d;
+    --card: #ece3d8;
+    --card-edge: #d8cdbf;
+    --row: #ddd2c4;
+    --row-hover: #cfc3b3;
+    --row-active: #c2b6a4;
+    --ink: #3a352f;
+    --ink-soft: #76685a;
+    --ink-mute: #9b8f80;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: #fff;
+    overflow: hidden;
+    font-family: 'Inter', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    display: flex;
+    background:
+      radial-gradient(ellipse 60% 50% at 30% 50%, rgba(255, 180, 90, 0.04), transparent 60%),
+      radial-gradient(ellipse 40% 60% at 80% 70%, rgba(255, 100, 50, 0.03), transparent 60%),
+      var(--bg);
+  }
+
+  /* subtle grain */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.5;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.08 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+    z-index: 1;
+  }
+
+  .canvas-area {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  canvas { display: block; }
+
+  /* CONTROL PANEL */
+  .panel {
+    width: 340px;
+    flex-shrink: 0;
+    padding: 32px 28px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 14px;
+    z-index: 2;
+  }
+
+  .card {
+    width: 100%;
+    background: linear-gradient(180deg, var(--card) 0%, var(--card-edge) 100%);
+    border-radius: 26px;
+    padding: 14px;
+    position: relative;
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.5) inset,
+      0 -1px 0 rgba(0, 0, 0, 0.04) inset,
+      0 30px 60px -20px rgba(0, 0, 0, 0.7),
+      0 12px 24px -12px rgba(0, 0, 0, 0.5);
+  }
+
+  /* register --fill as an animatable percentage so palette changes can ease */
+  @property --fill {
+    syntax: '<percentage>';
+    inherits: false;
+    initial-value: 0%;
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-radius: 14px;
+    margin-top: 6px;
+    user-select: none;
+    position: relative;
+    overflow: hidden;
+    isolation: isolate; /* contain mix-blend-mode of children to this row */
+    background: var(--row);
+    transition: --fill 220ms cubic-bezier(.4, 0, .2, 1);
+  }
+
+  .row:first-of-type { margin-top: 0; }
+
+  /* numeric rows: the whole row IS the slider. fill = darker portion from left */
+  .row.scrubbable {
+    cursor: ew-resize;
+    background:
+      linear-gradient(
+        to right,
+        var(--ink) 0%,
+        var(--ink) var(--fill, 0%),
+        var(--row) var(--fill, 0%),
+        var(--row) 100%
+      );
+  }
+  .row.scrubbable:hover {
+    background:
+      linear-gradient(
+        to right,
+        #2b2622 0%,
+        #2b2622 var(--fill, 0%),
+        var(--row-hover) var(--fill, 0%),
+        var(--row-hover) 100%
+      );
+  }
+  .row.scrubbing { transition: none; }
+
+  /* text row stays flat */
+  .row.text-row { background: var(--row); cursor: text; }
+  .row.text-row:hover { background: var(--row-hover); }
+
+  .label, .value {
+    position: relative;
+    z-index: 1;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    letter-spacing: -0.01em;
+    /* auto-contrast: white text gets inverted against whatever's behind */
+    color: #ffffff;
+    mix-blend-mode: difference;
+  }
+  .label { font-weight: 600; }
+  .value {
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    padding: 4px 10px;
+    margin: -4px -10px;
+    border-radius: 6px;
+    cursor: text;
+    min-width: 28px;
+    text-align: right;
+    outline: none;
+    transition: background 120ms ease;
+  }
+
+  /* hover affordance on the value: faint inset ring (blend-mode handles contrast) */
+  .value:hover {
+    background: rgba(255, 255, 255, 0.18);
+  }
+
+  /* editing: drop blend mode, hard solid surface, clear focus */
+  .value[contenteditable="true"] {
+    background: #ffffff;
+    color: var(--ink);
+    mix-blend-mode: normal;
+    box-shadow: 0 0 0 2px rgba(58, 53, 47, 0.35);
+    cursor: text;
+  }
+
+  /* text-row labels: plain colors (no need for blend on flat bg) */
+  .row.text-row .label,
+  .row.text-row .value {
+    mix-blend-mode: normal;
+    color: var(--ink);
+  }
+  .row.text-row .value { color: var(--ink-soft); }
+  .row.text-row .value:hover {
+    background: rgba(58, 53, 47, 0.07);
+    color: var(--ink);
+  }
+
+  /* palette swatches */
+  .palette-bar {
+    margin-top: 6px;
+    padding: 14px 18px;
+    border-radius: 14px;
+    background: var(--row);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .palette-bar-label {
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    color: var(--ink);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .swatch-list {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .swatch {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    position: relative;
+    background-clip: padding-box;
+    box-shadow:
+      0 0 0 2px var(--card),
+      0 0 0 2px var(--card),
+      0 2px 6px -2px rgba(0,0,0,0.25);
+    transition: transform 160ms cubic-bezier(.34,1.6,.64,1), box-shadow 160ms ease;
+  }
+  .swatch:hover {
+    transform: scale(1.12);
+  }
+  .swatch.active {
+    transform: scale(1.08);
+    box-shadow:
+      0 0 0 2px var(--card),
+      0 0 0 4px var(--ink),
+      0 4px 10px -2px rgba(0,0,0,0.3);
+  }
+  .swatch::after {
+    content: attr(title);
+    position: absolute;
+    bottom: -22px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Inter', sans-serif;
+    font-size: 10px;
+    color: var(--ink-soft);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 120ms ease;
+    white-space: nowrap;
+  }
+  .swatch:hover::after { opacity: 1; }
+
+  /* shape selector (mirrors palette layout) */
+  .shape-list {
+    display: flex;
+    gap: 10px;
+  }
+  .shape-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    background: transparent;
+    display: grid;
+    place-items: center;
+    box-shadow: 0 0 0 0 var(--ink);
+    transition: transform 160ms cubic-bezier(.34,1.6,.64,1), box-shadow 160ms ease;
+    position: relative;
+  }
+  .shape-btn:hover { transform: scale(1.12); }
+  .shape-btn.active {
+    transform: scale(1.08);
+    box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--ink);
+  }
+  .shape-preview {
+    width: 14px;
+    height: 14px;
+    background: var(--ink);
+    display: block;
+  }
+  .shape-preview.round { border-radius: 50%; }
+  .shape-preview.square { border-radius: 2px; }
+  .shape-preview.diamond { transform: rotate(45deg); border-radius: 1px; width: 12px; height: 12px; }
+  .shape-btn::after {
+    content: attr(title);
+    position: absolute;
+    bottom: -22px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Inter', sans-serif;
+    font-size: 10px;
+    color: var(--ink-soft);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 120ms ease;
+    white-space: nowrap;
+  }
+  .shape-btn:hover::after { opacity: 1; }
+
+  /* download button */
+  .download-btn {
+    padding: 14px 18px;
+    border-radius: 14px;
+    background: var(--ink);
+    color: var(--card);
+    border: none;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 140ms ease, transform 80ms ease, opacity 140ms ease;
+    user-select: none;
+  }
+  .download-btn:hover { background: #2b2622; }
+  .download-btn:active { transform: scale(0.985); }
+  .download-btn.recording {
+    background: #b94234;
+    cursor: default;
+  }
+
+  @media (max-width: 720px) {
+    body { flex-direction: column; }
+    .panel { width: 100%; padding: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="canvas-area">
+  <canvas id="stage"></canvas>
+</div>
+
+<aside class="panel">
+  <div class="card">
+    <div class="row text-row" data-key="text" data-type="text">
+      <span class="label">Word</span>
+      <span class="value" data-display>BORING</span>
+    </div>
+
+    <div class="row scrubbable" data-key="dotRadius" data-type="number"
+         data-min="1" data-max="14" data-step="0.05" data-decimals="2">
+      <span class="label">Dot size</span>
+      <span class="value" data-display>4.00</span>
+    </div>
+
+    <div class="row scrubbable" data-key="density" data-type="number"
+         data-min="3" data-max="20" data-step="0.2" data-decimals="0" data-rebuild="true">
+      <span class="label">Spacing</span>
+      <span class="value" data-display>9</span>
+    </div>
+
+    <div class="row scrubbable" data-key="waveSpeed" data-type="number"
+         data-min="-4" data-max="4" data-step="0.02" data-decimals="2">
+      <span class="label">Speed</span>
+      <span class="value" data-display>0.30</span>
+    </div>
+
+    <div class="row scrubbable" data-key="waveAngle" data-type="number"
+         data-min="0" data-max="360" data-step="1" data-decimals="0" data-suffix="°">
+      <span class="label">Direction</span>
+      <span class="value" data-display>45°</span>
+    </div>
+
+    <div class="row scrubbable" data-key="hueStart" data-type="number"
+         data-min="0" data-max="360" data-step="1" data-decimals="0">
+      <span class="label">Color</span>
+      <span class="value" data-display>25</span>
+    </div>
+
+    <div class="row scrubbable" data-key="hueRange" data-type="number"
+         data-min="0" data-max="360" data-step="1" data-decimals="0">
+      <span class="label">Color spread</span>
+      <span class="value" data-display>35</span>
+    </div>
+
+    <div class="row scrubbable" data-key="swarm" data-type="number"
+         data-min="0" data-max="8" data-step="0.05" data-decimals="2">
+      <span class="label">Wobble</span>
+      <span class="value" data-display>0.90</span>
+    </div>
+
+    <div class="palette-bar">
+      <span class="palette-bar-label">Palette</span>
+      <div class="swatch-list">
+        <button class="swatch active" title="Amber"    data-palette='{"hueStart":25,"hueRange":35,"sat":75,"light":58}'></button>
+        <button class="swatch"        title="Citrus"   data-palette='{"hueStart":48,"hueRange":28,"sat":85,"light":62}'></button>
+        <button class="swatch"        title="Coral"    data-palette='{"hueStart":5,"hueRange":25,"sat":68,"light":70}'></button>
+        <button class="swatch"        title="Crimson"  data-palette='{"hueStart":350,"hueRange":22,"sat":72,"light":48}'></button>
+        <button class="swatch"        title="Berry"    data-palette='{"hueStart":315,"hueRange":30,"sat":75,"light":60}'></button>
+        <button class="swatch"        title="Lavender" data-palette='{"hueStart":255,"hueRange":40,"sat":50,"light":74}'></button>
+        <button class="swatch"        title="Ocean"    data-palette='{"hueStart":198,"hueRange":42,"sat":62,"light":54}'></button>
+        <button class="swatch"        title="Mint"     data-palette='{"hueStart":155,"hueRange":32,"sat":48,"light":70}'></button>
+        <button class="swatch"        title="Forest"   data-palette='{"hueStart":130,"hueRange":42,"sat":55,"light":44}'></button>
+        <button class="swatch"        title="Mono"     data-palette='{"hueStart":220,"hueRange":0,"sat":6,"light":75}'></button>
+      </div>
+    </div>
+
+    <div class="palette-bar">
+      <span class="palette-bar-label">Shape</span>
+      <div class="shape-list">
+        <button class="shape-btn active" data-shape="round"   title="Rounded"><span class="shape-preview round"></span></button>
+        <button class="shape-btn"        data-shape="square"  title="Square"><span class="shape-preview square"></span></button>
+        <button class="shape-btn"        data-shape="diamond" title="Diamond"><span class="shape-preview diamond"></span></button>
+      </div>
+    </div>
+  </div>
+
+  <button class="download-btn" id="download-btn" type="button">
+    <span class="btn-label">Download animation</span>
+  </button>
+</aside>
+
+<script>
+(() => {
+  // ----- CONFIG -----
+  const config = {
+    text: 'BORING',
+    dotRadius: 4.00,
+    density: 9,
+    waveSpeed: 0.30,
+    waveAngle: 45,
+    hueStart: 25,
+    hueRange: 35,
+    sat: 75,
+    light: 58,
+    swarm: 0.90,
+    swarmSpeed: 1,
+    shape: 'round',
+    fontSize: 260,
+  };
+
+  // ----- CANVAS -----
+  const canvas = document.getElementById('stage');
+  const ctx = canvas.getContext('2d');
+  let dpr = Math.max(1, window.devicePixelRatio || 1);
+
+  function resize() {
+    const area = document.querySelector('.canvas-area');
+    const r = area.getBoundingClientRect();
+    dpr = Math.max(1, window.devicePixelRatio || 1);
+    canvas.width = Math.floor(r.width * dpr);
+    canvas.height = Math.floor(r.height * dpr);
+    canvas.style.width = r.width + 'px';
+    canvas.style.height = r.height + 'px';
+    rebuildPixels(false);
+  }
+
+  // ----- PIXEL SAMPLING & MORPHING -----
+  let pixels = [];
+  let morphStartTime = 0;
+  const offscreen = document.createElement('canvas');
+  const offctx = offscreen.getContext('2d');
+
+  function samplePixels() {
+    const text = (config.text || ' ').toUpperCase();
+    const stageW = canvas.width / dpr;
+    const stageH = canvas.height / dpr;
+
+    // pick font size that fits with ~14% margin
+    const maxTextW = stageW * 0.86;
+    const maxTextH = stageH * 0.55;
+
+    let fs = config.fontSize;
+    offctx.font = `900 ${fs}px "Archivo Black", "Inter Tight", system-ui, sans-serif`;
+    let tw = offctx.measureText(text).width;
+    if (tw > maxTextW) fs = Math.floor(fs * maxTextW / tw);
+    if (fs > maxTextH * 1.25) fs = Math.floor(maxTextH * 1.25);
+    fs = Math.max(40, fs);
+
+    const fontStr = `900 ${fs}px "Archivo Black", "Inter Tight", system-ui, sans-serif`;
+    offctx.font = fontStr;
+    const metrics = offctx.measureText(text);
+    const pad = Math.ceil(fs * 0.15);
+    const w = Math.ceil(metrics.width) + pad * 2;
+    const h = Math.ceil(fs * 1.25) + pad * 2;
+
+    offscreen.width = w;
+    offscreen.height = h;
+    offctx.font = fontStr;
+    offctx.textBaseline = 'middle';
+    offctx.fillStyle = '#fff';
+    offctx.fillText(text, pad, h / 2);
+
+    const data = offctx.getImageData(0, 0, w, h).data;
+    const step = Math.max(3, Math.round(config.density));
+    const targets = [];
+
+    for (let y = 0; y < h; y += step) {
+      for (let x = 0; x < w; x += step) {
+        // 2x2 average so anti-aliased edges register
+        let a = 0;
+        for (let dy = 0; dy < 2; dy++) {
+          for (let dx = 0; dx < 2; dx++) {
+            const sx = Math.min(w - 1, x + dx);
+            const sy = Math.min(h - 1, y + dy);
+            a += data[(sy * w + sx) * 4 + 3];
+          }
+        }
+        a /= 4;
+        if (a > 100) {
+          targets.push({
+            x: x - w / 2,
+            y: y - h / 2,
+            alpha: Math.min(1, a / 200),
+          });
+        }
+      }
+    }
+    return targets;
+  }
+
+  // Sort by angle from center then radius — gives a nice rotational re-flow
+  function sortForMatch(arr) {
+    return arr.slice().sort((a, b) => {
+      const aa = Math.atan2(a.y, a.x);
+      const ba = Math.atan2(b.y, b.x);
+      if (aa !== ba) return aa - ba;
+      return (a.x * a.x + a.y * a.y) - (b.x * b.x + b.y * b.y);
+    });
+  }
+
+  // morph timing — tuned for a smooth, satisfying swarm transition
+  const MORPH_DURATION = 950;   // ms — total time each pixel takes to ease in
+  const MORPH_STAGGER = 320;    // ms — max random delay per pixel for organic stagger
+
+  // easeInOutCubic — gentle accelerate, gentle decelerate. classic "nice".
+  function ease(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  }
+
+  function morphTo(targets) {
+    const oldList = sortForMatch(pixels);
+    const newList = sortForMatch(targets);
+    const matchCount = Math.min(oldList.length, newList.length);
+
+    // re-target reused pixels — capture current pose as the easing start
+    for (let i = 0; i < matchCount; i++) {
+      const p = oldList[i];
+      const t = newList[i];
+      p.startX = p.x;
+      p.startY = p.y;
+      p.startAlpha = p.alpha;
+      p.targetX = t.x;
+      p.targetY = t.y;
+      p.targetAlpha = t.alpha;
+      p.dying = false;
+      p.delay = Math.random() * MORPH_STAGGER;
+    }
+
+    // spawn extras flying in from outside the cluster
+    if (newList.length > oldList.length) {
+      for (let i = matchCount; i < newList.length; i++) {
+        const t = newList[i];
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 260 + Math.random() * 220;
+        const sx = t.x + Math.cos(angle) * dist;
+        const sy = t.y + Math.sin(angle) * dist;
+        pixels.push({
+          x: sx, y: sy,
+          startX: sx, startY: sy,
+          startAlpha: 0,
+          targetX: t.x, targetY: t.y,
+          targetAlpha: t.alpha,
+          seed: Math.random() * 1000,
+          alpha: 0,
+          dying: false,
+          delay: Math.random() * MORPH_STAGGER,
+        });
+      }
+    }
+    // drift extras outward and fade them
+    else if (oldList.length > newList.length) {
+      for (let i = matchCount; i < oldList.length; i++) {
+        const p = oldList[i];
+        const angle = Math.atan2(p.y, p.x) + (Math.random() - 0.5) * 0.8;
+        const dist = 80 + Math.random() * 60;
+        p.startX = p.x;
+        p.startY = p.y;
+        p.startAlpha = p.alpha;
+        p.targetX = p.x + Math.cos(angle) * dist;
+        p.targetY = p.y + Math.sin(angle) * dist;
+        p.targetAlpha = 0;
+        p.dying = true;
+        p.delay = Math.random() * (MORPH_STAGGER * 0.6);
+      }
+    }
+
+    morphStartTime = performance.now();
+  }
+
+  function rebuildPixels(morph = true) {
+    const targets = samplePixels();
+    if (!morph || pixels.length === 0) {
+      // snap — start equals target so easing is a no-op
+      pixels = targets.map(t => ({
+        x: t.x, y: t.y,
+        startX: t.x, startY: t.y,
+        targetX: t.x, targetY: t.y,
+        startAlpha: t.alpha,
+        alpha: t.alpha,
+        targetAlpha: t.alpha,
+        seed: Math.random() * 1000,
+        dying: false,
+        delay: 0,
+      }));
+      morphStartTime = performance.now();
+    } else {
+      morphTo(targets);
+    }
+  }
+
+  // ----- CURSOR DISPERSION -----
+  // Track cursor position in canvas-local coords (center as origin).
+  // When the cursor is null, no repulsion is applied — pixels return to formation.
+  let mouseX = null, mouseY = null;
+
+  function updateCursorFrom(clientX, clientY) {
+    const rect = canvas.getBoundingClientRect();
+    mouseX = clientX - rect.left - rect.width / 2;
+    mouseY = clientY - rect.top - rect.height / 2;
+  }
+  function clearCursor() { mouseX = null; mouseY = null; }
+
+  canvas.addEventListener('mousemove', (e) => updateCursorFrom(e.clientX, e.clientY));
+  canvas.addEventListener('mouseleave', clearCursor);
+  canvas.addEventListener('touchmove', (e) => {
+    if (e.touches.length > 0) updateCursorFrom(e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: true });
+  canvas.addEventListener('touchend', clearCursor);
+  canvas.addEventListener('touchcancel', clearCursor);
+
+  // tuning — target-based motion (no momentum, no oscillation)
+  //   PUSH_RATE = how snappily pixels move outward when cursor touches
+  //   RETURN_RATE = how gently they drift back when cursor leaves (smaller = slower)
+  const REPEL_R = 24;
+  const REPEL_R2 = REPEL_R * REPEL_R;
+  const MAX_PUSH = 26;
+  const PUSH_RATE = 0.32;
+  const RETURN_RATE = 0.08;
+
+  // ----- ANIMATION -----
+  let t = 0;
+  let last = performance.now();
+
+  function draw(now) {
+    const dt = Math.min(48, now - last);
+    last = now;
+    t += dt;
+
+    const w = canvas.width / dpr;
+    const h = canvas.height / dpr;
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    const angleRad = config.waveAngle * Math.PI / 180;
+    const cs = Math.cos(angleRad);
+    const sn = Math.sin(angleRad);
+    const waveLen = 220;
+    const ts = t * 0.001;
+    const swarmT = ts * config.swarmSpeed;
+
+    ctx.translate(w / 2, h / 2);
+
+    // --- morph update pass: eased time-based interpolation from start → target
+    const elapsedSinceMorph = now - morphStartTime;
+    for (let i = pixels.length - 1; i >= 0; i--) {
+      const p = pixels[i];
+      const localElapsed = elapsedSinceMorph - p.delay;
+      if (localElapsed > 0) {
+        const progress = Math.min(1, localElapsed / MORPH_DURATION);
+        const e = ease(progress);
+        p.x = p.startX + (p.targetX - p.startX) * e;
+        p.y = p.startY + (p.targetY - p.startY) * e;
+        p.alpha = p.startAlpha + (p.targetAlpha - p.startAlpha) * e;
+      }
+      // garbage-collect dying pixels once they've faded out
+      if (p.dying && p.alpha < 0.005) {
+        pixels.splice(i, 1);
+      }
+    }
+
+    // --- draw pass (also runs cursor-dispersion physics per pixel)
+    const hasMouse = mouseX !== null;
+    for (let i = 0; i < pixels.length; i++) {
+      const p = pixels[i];
+
+      // lazy-init cursor displacement state for pixels that didn't have it yet
+      if (p.dx === undefined) { p.dx = 0; p.dy = 0; p.pushDX = 0; p.pushDY = 0; }
+
+      // compute cursor influence as a scalar (0 → outside radius, 1 → at cursor)
+      // and lock the push direction on first contact so cursor motion doesn't swing the pixel
+      let influence = 0;
+      if (hasMouse) {
+        const ex = p.x - mouseX;
+        const ey = p.y - mouseY;
+        const d2 = ex * ex + ey * ey;
+        if (d2 < REPEL_R2 && d2 > 0.01) {
+          const d = Math.sqrt(d2);
+          const u = 1 - d / REPEL_R;
+          // smoothstep falloff — soft both at edge and at center
+          influence = u * u * (3 - 2 * u);
+          // first-contact direction lock: pixel commits to one direction and rides it
+          if (p.pushDX === 0 && p.pushDY === 0) {
+            p.pushDX = ex / d;
+            p.pushDY = ey / d;
+          }
+        }
+      }
+
+      // target displacement = locked direction × current influence × max distance
+      const targetDx = p.pushDX * influence * MAX_PUSH;
+      const targetDy = p.pushDY * influence * MAX_PUSH;
+
+      // lerp toward target — fast on the way out, slow on the way home
+      const rate = influence > 0 ? PUSH_RATE : RETURN_RATE;
+      p.dx += (targetDx - p.dx) * rate;
+      p.dy += (targetDy - p.dy) * rate;
+
+      // once pixel has returned home, release the locked direction so next contact gets fresh radial
+      if (influence === 0 && Math.abs(p.dx) < 0.3 && Math.abs(p.dy) < 0.3) {
+        p.pushDX = 0;
+        p.pushDY = 0;
+      }
+
+      // bee swarm jitter — sum of sines feels more organic than random
+      const s = p.seed;
+      const ox = (Math.sin(s + swarmT * 2.0) + Math.sin(s * 1.7 + swarmT * 1.3) * 0.6) * config.swarm;
+      const oy = (Math.cos(s * 1.1 + swarmT * 1.8) + Math.cos(s * 0.6 + swarmT * 2.4) * 0.5) * config.swarm;
+
+      const px = p.x + ox + p.dx;
+      const py = p.y + oy + p.dy;
+
+      // linear color wave projected along the wave angle
+      const proj = (px * cs + py * sn) / waveLen;
+      const phase = proj + ts * config.waveSpeed * 0.5;
+      // smooth sinusoidal hue position for a "shimmer" feel
+      const norm = (Math.sin(phase * Math.PI) + 1) * 0.5;
+      const hue = (config.hueStart + norm * config.hueRange) % 360;
+      const light = config.light + (norm - 0.5) * 18;
+
+      ctx.fillStyle = `hsl(${hue}, ${config.sat}%, ${light}%)`;
+      ctx.globalAlpha = p.alpha;
+      const sz = config.dotRadius;
+      if (config.shape === 'square') {
+        // scale square down so its visual mass matches a circle at the same dotRadius
+        // (square at full 2×size feels chunky and crowds the grid)
+        const half = sz * 0.85;
+        ctx.fillRect(px - half, py - half, half * 2, half * 2);
+      } else if (config.shape === 'diamond') {
+        // scale diamond up to match circle area (rotated square has less area at same half-diagonal)
+        const r = sz * 1.20;
+        ctx.beginPath();
+        ctx.moveTo(px, py - r);
+        ctx.lineTo(px + r, py);
+        ctx.lineTo(px, py + r);
+        ctx.lineTo(px - r, py);
+        ctx.closePath();
+        ctx.fill();
+      } else {
+        // round (default)
+        ctx.beginPath();
+        ctx.arc(px, py, sz, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    requestAnimationFrame(draw);
+  }
+
+  // ----- CONFIG ROW INTERACTIONS -----
+  function fmtValue(row) {
+    const key = row.dataset.key;
+    const display = row.querySelector('[data-display]');
+    // skip overwriting if user is actively editing
+    if (display.contentEditable === 'true') return;
+    if (row.dataset.type === 'text') {
+      display.textContent = config[key];
+    } else {
+      const decimals = parseInt(row.dataset.decimals || '0', 10);
+      const suffix = row.dataset.suffix || '';
+      display.textContent = parseFloat(config[key]).toFixed(decimals) + suffix;
+    }
+    // update slider track fill width
+    if (row.dataset.type === 'number') {
+      const min = parseFloat(row.dataset.min);
+      const max = parseFloat(row.dataset.max);
+      const pct = ((config[key] - min) / (max - min)) * 100;
+      row.style.setProperty('--fill', pct + '%');
+    }
+  }
+
+  function selectAll(el) {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  // Make a value span editable in-place via contenteditable.
+  // No DOM swap, no visible transition — just morphs into an input.
+  function makeEditable(row, valueEl, opts) {
+    const { key, isNumeric, min, max, decimals, rebuild, rebuildMorph } = opts;
+
+    // prevent the row from starting a scrub when the user clicks/drags on the value
+    valueEl.addEventListener('mousedown', (e) => e.stopPropagation());
+
+    valueEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (valueEl.contentEditable === 'true') return;
+      // strip suffix so the user types the raw number
+      if (isNumeric) {
+        valueEl.textContent = parseFloat(config[key]).toFixed(decimals);
+      } else {
+        valueEl.textContent = config[key];
+      }
+      valueEl.contentEditable = 'true';
+      valueEl.spellcheck = false;
+      valueEl.focus();
+      selectAll(valueEl);
+    });
+
+    const commit = () => {
+      if (valueEl.contentEditable !== 'true') return;
+      const text = valueEl.textContent.trim();
+      valueEl.contentEditable = 'false';
+      if (isNumeric) {
+        let v = parseFloat(text);
+        if (!isNaN(v)) {
+          v = Math.max(min, Math.min(max, v));
+          config[key] = v;
+          if (rebuild) rebuildPixels(false);
+        }
+      } else {
+        if (text.length > 0) {
+          const newVal = text.toUpperCase();
+          if (newVal !== config[key]) {
+            config[key] = newVal;
+            rebuildPixels(rebuildMorph);
+          }
+        }
+      }
+      fmtValue(row);
+    };
+
+    const cancel = () => {
+      valueEl.contentEditable = 'false';
+      fmtValue(row);
+    };
+
+    valueEl.addEventListener('blur', commit);
+    valueEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); valueEl.blur(); }
+      else if (e.key === 'Escape') { e.preventDefault(); cancel(); valueEl.blur(); }
+      else if (isNumeric) {
+        // restrict to numeric chars
+        const allowed = /[0-9.\-]/;
+        const ctrl = ['Backspace','Delete','ArrowLeft','ArrowRight','Tab','Home','End'];
+        if (e.key.length === 1 && !allowed.test(e.key) && !ctrl.includes(e.key)) {
+          e.preventDefault();
+        }
+      }
+    });
+  }
+
+  function bindNumeric(row) {
+    const key = row.dataset.key;
+    const min = parseFloat(row.dataset.min);
+    const max = parseFloat(row.dataset.max);
+    const step = parseFloat(row.dataset.step);
+    const rebuild = row.dataset.rebuild === 'true';
+    const decimals = parseInt(row.dataset.decimals || '0', 10);
+
+    const valueEl = row.querySelector('[data-display]');
+
+    let startX, startVal, dragging = false;
+
+    row.addEventListener('mousedown', (e) => {
+      if (valueEl.contentEditable === 'true') return;
+      dragging = true;
+      startX = e.clientX;
+      startVal = config[key];
+      row.classList.add('scrubbing');
+      document.body.style.cursor = 'ew-resize';
+      e.preventDefault();
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - startX;
+      let mult = step;
+      if (e.shiftKey) mult *= 0.25;
+      let v = startVal + dx * mult;
+      v = Math.max(min, Math.min(max, v));
+      v = Math.round(v / step) * step;
+      config[key] = parseFloat(v.toFixed(6));
+      fmtValue(row);
+      if (rebuild) rebuildPixels(false);
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false;
+      row.classList.remove('scrubbing');
+      document.body.style.cursor = '';
+    });
+
+    makeEditable(row, valueEl, {
+      key, isNumeric: true, min, max, decimals, rebuild, rebuildMorph: false
+    });
+  }
+
+  function bindText(row) {
+    const key = row.dataset.key;
+    const valueEl = row.querySelector('[data-display]');
+    makeEditable(row, valueEl, {
+      key, isNumeric: false, rebuild: true, rebuildMorph: true
+    });
+    // clicking anywhere on the text row enters edit mode (delegates to the value)
+    row.addEventListener('click', (e) => {
+      if (e.target === valueEl || valueEl.contains(e.target)) return;
+      if (valueEl.contentEditable === 'true') return;
+      valueEl.click();
+    });
+  }
+
+  // bind all rows
+  document.querySelectorAll('.row').forEach(row => {
+    if (row.dataset.type === 'number') bindNumeric(row);
+    else if (row.dataset.type === 'text') bindText(row);
+    fmtValue(row);
+  });
+
+  // palette swatches — give each a real color preview based on its palette data
+  document.querySelectorAll('.swatch').forEach(btn => {
+    const p = JSON.parse(btn.dataset.palette);
+    // build a 4-stop gradient across the hue range so the swatch reads the palette
+    const stops = [];
+    const steps = 4;
+    for (let i = 0; i < steps; i++) {
+      const norm = i / (steps - 1);
+      const hue = (p.hueStart + norm * p.hueRange) % 360;
+      const light = p.light + (norm - 0.5) * 18;
+      stops.push(`hsl(${hue}, ${p.sat}%, ${light}%) ${(norm * 100).toFixed(0)}%`);
+    }
+    btn.style.background = `linear-gradient(135deg, ${stops.join(', ')})`;
+
+    btn.addEventListener('click', () => {
+      Object.assign(config, p);
+      document.querySelectorAll('.swatch').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      // refresh rows that show hueStart, hueRange
+      document.querySelectorAll('.row').forEach(fmtValue);
+    });
+  });
+
+  // shape buttons — switch the pixel drawing primitive
+  document.querySelectorAll('.shape-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      config.shape = btn.dataset.shape;
+      document.querySelectorAll('.shape-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+
+  // download recording — capture the canvas as a WebM video of the live animation
+  (() => {
+    const btn = document.getElementById('download-btn');
+    const label = btn.querySelector('.btn-label');
+    const DURATION_MS = 4000;
+
+    function pickMime() {
+      const candidates = [
+        'video/webm;codecs=vp9',
+        'video/webm;codecs=vp8',
+        'video/webm',
+        'video/mp4'
+      ];
+      for (const m of candidates) {
+        if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m;
+      }
+      return '';
+    }
+
+    btn.addEventListener('click', () => {
+      if (btn.classList.contains('recording')) return;
+      if (!window.MediaRecorder || !canvas.captureStream) {
+        label.textContent = 'Recording not supported';
+        setTimeout(() => { label.textContent = 'Download animation'; }, 1800);
+        return;
+      }
+
+      const mime = pickMime();
+      let stream;
+      try {
+        stream = canvas.captureStream(60);
+      } catch (err) {
+        label.textContent = 'Capture failed';
+        setTimeout(() => { label.textContent = 'Download animation'; }, 1800);
+        return;
+      }
+
+      const recorder = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 8_000_000 } : undefined);
+      const chunks = [];
+      recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+
+      const startedAt = performance.now();
+      btn.classList.add('recording');
+
+      function tick() {
+        if (!btn.classList.contains('recording')) return;
+        const remaining = Math.max(0, DURATION_MS - (performance.now() - startedAt));
+        label.textContent = `Recording ${(remaining / 1000).toFixed(1)}s`;
+        if (remaining > 0) requestAnimationFrame(tick);
+      }
+
+      recorder.onstop = () => {
+        const ext = mime.includes('mp4') ? 'mp4' : 'webm';
+        const blob = new Blob(chunks, { type: mime || 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const safeName = (config.text || 'animation').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'animation';
+        a.href = url;
+        a.download = `pixel-shimmer-${safeName}.${ext}`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+        btn.classList.remove('recording');
+        label.textContent = 'Download animation';
+      };
+
+      recorder.start();
+      tick();
+      setTimeout(() => recorder.state === 'recording' && recorder.stop(), DURATION_MS);
+    });
+  })();
+
+  // ----- STARTUP -----
+  window.addEventListener('resize', resize);
+
+  // wait for the font so sampling reflects Archivo Black, not a fallback
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => {
+      resize();
+      requestAnimationFrame(draw);
+    });
+  } else {
+    resize();
+    requestAnimationFrame(draw);
+  }
+})();
+</script>
+</body>
+</html>
