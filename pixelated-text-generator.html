@@ -964,32 +964,76 @@
     });
   });
 
-  // download — snapshot the current canvas frame as a PNG
+  // download — export this HTML file with current config baked in
   (() => {
     const btn = document.getElementById('download-btn');
     const label = btn.querySelector('.btn-label');
 
-    btn.addEventListener('click', () => {
-      // Composite: dark background + live canvas frame → offscreen canvas
-      const off = document.createElement('canvas');
-      off.width  = canvas.width;
-      off.height = canvas.height;
-      const offCtx = off.getContext('2d');
-      offCtx.fillStyle = '#0c0a09';
-      offCtx.fillRect(0, 0, off.width, off.height);
-      offCtx.drawImage(canvas, 0, 0);
+    btn.addEventListener('click', async () => {
+      if (btn.dataset.busy) return;
+      btn.dataset.busy = '1';
+      label.textContent = 'Preparing…';
 
-      const safeName = (config.text || 'text').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'text';
-      const a = document.createElement('a');
-      a.href = off.toDataURL('image/png');
-      a.download = `pixelated-text-${safeName}.png`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+      try {
+        // Fetch the page source (works on local server and GitHub Pages)
+        const res = await fetch(location.href);
+        let html = await res.text();
 
-      // Brief feedback
-      label.textContent = 'Saved!';
-      setTimeout(() => { label.textContent = 'Download'; }, 1200);
+        // Replace the entire config block with current live values
+        const safeText = config.text.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        const newConfig = `  const config = {
+    text: '${safeText}',
+    dotRadius: ${config.dotRadius},
+    density: ${config.density},
+    waveSpeed: ${config.waveSpeed},
+    waveAngle: ${config.waveAngle},
+    hueStart: ${config.hueStart},
+    hueRange: ${config.hueRange},
+    sat: ${config.sat},
+    light: ${config.light},
+    swarm: ${config.swarm},
+    swarmSpeed: ${config.swarmSpeed},
+    shape: '${config.shape}',
+    fontSize: ${config.fontSize},
+  };`;
+
+        html = html.replace(/  const config = \{[\s\S]*?\};/, newConfig);
+
+        // Also mark the matching swatch as active so palette looks correct on open
+        // (strip all active attrs then re-apply to the matching one)
+        html = html.replace(/class="swatch active"/g, 'class="swatch"');
+        const matchSwatch = `"hueStart":${config.hueStart},"hueRange":${config.hueRange},"sat":${config.sat},"light":${config.light}`;
+        html = html.replace(
+          new RegExp(`(class="swatch"[^>]*data-palette='[^']*${config.hueStart}[^']*')`),
+          (m) => m.replace('class="swatch"', 'class="swatch active"')
+        );
+
+        // Mark correct shape button active
+        html = html.replace(/class="shape-btn active"/g, 'class="shape-btn"');
+        html = html.replace(
+          new RegExp(`(class="shape-btn"[^>]*data-shape="${config.shape}")`),
+          (m) => m.replace('class="shape-btn"', 'class="shape-btn active"')
+        );
+
+        const safeName = (config.text || 'text').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'text';
+        const blob = new Blob([html], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `pixelated-text-${safeName}.html`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+
+        label.textContent = 'Downloaded!';
+        setTimeout(() => { label.textContent = 'Download animation'; }, 1500);
+      } catch (err) {
+        label.textContent = 'Failed – try again';
+        setTimeout(() => { label.textContent = 'Download animation'; }, 2000);
+      }
+
+      delete btn.dataset.busy;
     });
   })();
 
