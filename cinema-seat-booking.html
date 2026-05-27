@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Aurora — Choose Your Seat · Aurelia Cinemas</title>
+<title>Movie Booking Experience</title>
+<meta name="description" content="A cinematic seat selection experience. Browse the auditorium, pick your perfect spot — standard seats or premium loveseats — apply a promo code, and head to checkout in a few taps." />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -30,6 +31,19 @@
 
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
+
+/* === SCROLLBAR === */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:var(--bg-2)}
+::-webkit-scrollbar-thumb{
+  background:rgba(255,255,255,.10);
+  border-radius:99px;
+  transition:background .2s;
+}
+::-webkit-scrollbar-thumb:hover{background:rgba(244,201,87,.35)}
+::-webkit-scrollbar-corner{background:var(--bg-2)}
+/* Firefox */
+*{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.10) var(--bg-2)}
 body{
   min-height:100vh;
   background:
